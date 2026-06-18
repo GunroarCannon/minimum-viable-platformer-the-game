@@ -10,6 +10,8 @@ var _was_on_floor: bool = false
 
 func _ready() -> void:
 	super._ready()
+	tear_size  = Vector2(128, 128)
+	tear_color = Color(0.1, 0.5, 0.1)
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:
 		coll.shape.size = Vector2(128, 128)

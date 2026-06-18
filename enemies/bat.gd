@@ -7,6 +7,8 @@ extends BaseEnemy
 func _ready() -> void:
 	gravity_scale = 0.0 # Ignore gravity
 	super._ready()
+	tear_size  = Vector2(64, 48)
+	tear_color = Color(0.2, 0.2, 0.22)
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:
 		coll.shape.size = Vector2(64, 64)

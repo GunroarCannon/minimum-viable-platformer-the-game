@@ -9,6 +9,8 @@ var timer: float = 0.0
 
 func _ready() -> void:
 	super._ready()
+	tear_size  = Vector2(64, 64)
+	tear_color = Color(0.2, 0.8, 0.2)
 	# Ensure shapes match the 64x64 size
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:

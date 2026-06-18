@@ -21,6 +21,17 @@ extends Node
 ## Tween duration for zoom transitions in seconds
 @export var camera_zoom_tween_duration: float = 0.55
 
+# ─── DEBUG ──────────────────────────────────────────────────────────────
+## Show debug overlay (FPS, memory, velocity, zoom, momentum, stun)
+@export var debug_text: bool = false
+
+## Persistent dictionary of debug toggles, easy to extend with new features.
+@export var debug_toggles: Dictionary = {
+	"auto_restart": false,
+	"keep_seed": false,
+}
+
+
 func _ready() -> void:
 	print("[Global] _ready() called — initialising input map")
 	_initialize_input_map()

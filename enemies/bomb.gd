@@ -12,6 +12,9 @@ var color_mod = Color(0.1, 0.1, 0.1)
 
 func _ready() -> void:
 	super._ready()
+	tear_size      = Vector2(64, 64)
+	tear_color     = Color(0.12, 0.12, 0.12)
+	tears_on_death = false  # bomb uses its own explosion effect
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:
 		coll.shape.size = Vector2(64, 64)

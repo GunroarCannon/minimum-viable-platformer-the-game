@@ -4,6 +4,16 @@ class_name BaseEnemy
 @export var can_be_stomped: bool = true
 @export var gravity_scale: float = 1.0
 
+## ── Tear-death configuration ───────────────────────────────────────────────
+## Set these in each subclass _ready() to match the entity's visual size and colour.
+@export var tear_size:  Vector2 = Vector2(64, 64)
+@export var tear_color: Color   = Color(0.55, 0.55, 0.55)
+@export var tear_type:  String  = "default"
+## Optional local-space Vector2 coords that bias tear cut angles.
+var tear_hard_points: Array = []
+## Set false on entities that should poof (not tear) even on contact death (e.g. bullet).
+var tears_on_death: bool = true
+
 var player: Node2D = null
 var _is_dying: bool = false
 
@@ -55,23 +65,34 @@ func _on_hitbox_area_entered(area: Area2D) -> void:
 			return
 		body.die()
 
-func die() -> void:
+## Normal kill – poof particles. Pass torn=true to shatter into physics pieces.
+## impact_vel is used to scatter pieces outward.
+func die(torn: bool = false, impact_vel: Vector2 = Vector2.ZERO) -> void:
 	if _is_dying: return
 	_is_dying = true
-	
-	var poof = CPUParticles2D.new()
-	poof.emitting = true
-	poof.one_shot = true
-	poof.amount = 24
-	poof.lifetime = 0.5
-	poof.explosiveness = 1.0
-	poof.spread = 180.0
-	poof.initial_velocity_min = 80.0
-	poof.initial_velocity_max = 280.0
-	poof.scale_amount_min = 8.0
-	poof.scale_amount_max = 20.0
-	poof.color = Color(0.9, 0.9, 0.9)
-	get_parent().add_child(poof)
-	poof.global_position = global_position
-	
+
+	if torn and tears_on_death:
+		# Shatter into irregular physics polygons
+		TearEffect.apply(self, tear_size, tear_color, impact_vel, tear_hard_points, tear_type)
+	else:
+		# Classic poof
+		var poof = CPUParticles2D.new()
+		poof.emitting = true
+		poof.one_shot = true
+		poof.amount = 24
+		poof.lifetime = 0.5
+		poof.explosiveness = 1.0
+		poof.spread = 180.0
+		poof.initial_velocity_min = 80.0
+		poof.initial_velocity_max = 280.0
+		poof.scale_amount_min = 8.0
+		poof.scale_amount_max = 20.0
+		poof.color = Color(0.9, 0.9, 0.9)
+		get_parent().add_child(poof)
+		poof.global_position = global_position
+
 	queue_free()
+
+## Convenience shorthand – call this when an impact velocity is known.
+func die_torn(impact_vel: Vector2 = Vector2.ZERO) -> void:
+	die(true, impact_vel)

@@ -8,12 +8,26 @@ extends BaseEnemy
 func _ready() -> void:
 	can_be_stomped = true
 	super._ready()
+	tear_size  = Vector2(128, 96)
+	tear_color = Color(0.8, 0.2, 0.2)  # Red spring top
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:
 		coll.shape.size = Vector2(128, 128)
 	var hitbox_coll = $Hitbox/CollisionShape2D
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(138, 138)
+
+	# Separate wide Area2D for bouncing enemy bodies (layer 2)
+	var bounce_area = Area2D.new()
+	bounce_area.collision_layer = 0
+	bounce_area.collision_mask  = 2  # enemy CharacterBody2D layer
+	var ba_shape = CollisionShape2D.new()
+	var ba_rect  = RectangleShape2D.new()
+	ba_rect.size = Vector2(148, 148)  # slightly larger than body
+	ba_shape.shape = ba_rect
+	bounce_area.add_child(ba_shape)
+	add_child(bounce_area)
+	bounce_area.body_entered.connect(_on_bounce_enemy)
 
 func stomp_by(stomper: Node2D) -> void:
 	# Do NOT die. Just launch the player incredibly high.
@@ -52,6 +66,16 @@ func _custom_process(delta: float) -> void:
 		else:
 			velocity.x = move_toward(velocity.x, 0, 500 * delta)
 
+## Bounce any enemy body that enters our bounce area — large horizontal throw
+func _on_bounce_enemy(body: Node) -> void:
+	if _is_dying: return
+	if not body is BaseEnemy: return
+	if body == self: return
+	if body.get("_is_dying"): return
+	var knockback_dir = sign(body.global_position.x - global_position.x)
+	if knockback_dir == 0: knockback_dir = 1
+	body.velocity = Vector2(knockback_dir * 1400, -400)
+
 func _draw() -> void:
 	# Draw base
 	draw_rect(Rect2(-64, -16, 128, 80), Color(0.4, 0.4, 0.4))
@@ -60,4 +84,5 @@ func _draw() -> void:
 	# Draw eyes
 	draw_circle(Vector2(-20, -5), 8, Color.YELLOW)
 	draw_circle(Vector2(20, -5), 8, Color.YELLOW)
+
 

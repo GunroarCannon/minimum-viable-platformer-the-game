@@ -17,6 +17,7 @@ func _ready() -> void:
 	
 	# Set up the two Area2D sensors for stomp/death detection
 	_setup_sensors()
+	_setup_debug_ui()
 	
 	print("[Player] _ready() END. Position: ", position)
 
@@ -82,6 +83,7 @@ var _was_on_floor: bool = false
 var is_dead: bool = false
 var game_over_ui: Node = null
 var death_y_limit: float = 99999.0
+var debug_label: Label = null
 
 # Momentum-based auto-run
 var auto_momentum: float = 0.0   # current auto-run speed, builds up to run_speed
@@ -168,8 +170,9 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	if global_position.y > death_y_limit:
-		die()
+	var local_limit = get_local_lowest_y() + 384.0
+	if global_position.y > local_limit:
+		die(true)
 		return
 
 	# ——— Momentum-based auto-run ———
@@ -245,6 +248,7 @@ func _process(delta: float) -> void:
 			if _shake_timer <= 0:
 				cam.offset = Vector2.ZERO
 	_update_dynamic_zoom(delta)
+	_update_debug_text()
 
 func _update_dynamic_zoom(_delta: float) -> void:
 	var cam = _get_camera()
@@ -306,7 +310,7 @@ func _get_camera() -> Camera2D:
 			return child
 	return null
 
-func die() -> void:
+func die(is_fall: bool = false) -> void:
 	if is_dead: return
 	is_dead = true
 
@@ -317,41 +321,119 @@ func die() -> void:
 	if _foot_sensor:
 		_foot_sensor.set_deferred("monitoring", false)
 
-	# Keep floor collision intact (layer 1 / mask 1 unchanged).
-	# Player will fall and land naturally via move_and_slide().
-
-	# Launch in the OPPOSITE horizontal direction + a little upward
-	var launch_dir = -sign(velocity.x) if velocity.x != 0.0 else -1.0
-	velocity = Vector2(launch_dir * 300.0, -480.0)
-
-	# Fall-over animation: rotate sprite to lie flat (90°), flash red
-	if anim:
-		var tween = create_tween()
-		tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tween.tween_property(anim, "rotation_degrees", 90.0, 0.35)
-		tween.parallel().tween_property(anim, "modulate", Color(1.0, 0.2, 0.2, 1.0), 0.2)
-
-	# Poof burst
-	var poof = CPUParticles2D.new()
-	poof.emitting = true
-	poof.one_shot = true
-	poof.amount = 40
-	poof.lifetime = 0.8
-	poof.explosiveness = 0.9
-	poof.spread = 180.0
-	poof.gravity = Vector2(0, 300)
-	poof.initial_velocity_min = 150.0
-	poof.initial_velocity_max = 400.0
-	poof.scale_amount_min = 6.0
-	poof.scale_amount_max = 18.0
-	poof.color = Color(0.4, 0.8, 1.0)
-	get_parent().add_child(poof)
-	poof.global_position = global_position
-
+	# Release actions
 	Input.action_release("right")
 	Input.action_release("jump")
 
-	# Wait for player to settle before showing game-over screen
+	if is_fall:
+		# Reparent camera to level so it stops following the player down
+		var cam = _get_camera()
+		if cam:
+			var old_global = cam.global_position
+			cam.get_parent().remove_child(cam)
+			get_parent().add_child(cam)
+			cam.global_position = old_global
+
+		# Launch in the OPPOSITE horizontal direction + a little upward
+		var launch_dir = -sign(velocity.x) if velocity.x != 0.0 else -1.0
+		velocity = Vector2(launch_dir * 300.0, -480.0)
+
+		# Fall-over animation: rotate sprite to lie flat (90°), flash red
+		if anim:
+			var tween = create_tween()
+			tween.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tween.tween_property(anim, "rotation_degrees", 90.0, 0.35)
+			tween.parallel().tween_property(anim, "modulate", Color(1.0, 0.2, 0.2, 1.0), 0.2)
+
+		# Poof burst
+		var poof = CPUParticles2D.new()
+		poof.emitting = true
+		poof.one_shot = true
+		poof.amount = 40
+		poof.lifetime = 0.8
+		poof.explosiveness = 0.9
+		poof.spread = 180.0
+		poof.gravity = Vector2(0, 300)
+		poof.initial_velocity_min = 150.0
+		poof.initial_velocity_max = 400.0
+		poof.scale_amount_min = 6.0
+		poof.scale_amount_max = 18.0
+		poof.color = Color(0.4, 0.8, 1.0)
+		get_parent().add_child(poof)
+		poof.global_position = global_position
+	else:
+		# Tear death!
+		collision_layer = 0
+		collision_mask = 0
+		velocity = Vector2.ZERO
+		TearEffect.apply(self, Vector2(80, 110), Color(0.4, 0.8, 1.0), velocity, [], "circular")
+
+	# Wait for player to settle before reloading or showing game-over screen
 	await get_tree().create_timer(1.8).timeout
-	if game_over_ui and game_over_ui.has_method("show_game_over"):
-		game_over_ui.show_game_over()
+	if Global.debug_toggles.get("auto_restart", false):
+		if not Global.debug_toggles.get("keep_seed", false):
+			var level_gen = load("res://level_generator.gd")
+			if level_gen:
+				level_gen.current_seed = 0
+		get_tree().reload_current_scene()
+	else:
+		if game_over_ui and game_over_ui.has_method("show_game_over"):
+			game_over_ui.show_game_over()
+
+func _setup_debug_ui() -> void:
+	if not Global.debugText: return
+	var canvas_layer = CanvasLayer.new()
+	canvas_layer.layer = 100
+	add_child(canvas_layer)
+	
+	var bg = Panel.new()
+	bg.size = Vector2(250, 120)
+	bg.position = Vector2(5, 5)
+	canvas_layer.add_child(bg)
+	
+	debug_label = Label.new()
+	debug_label.position = Vector2(10, 10)
+	debug_label.add_theme_color_override("font_color", Color.WHITE)
+	debug_label.add_theme_font_size_override("font_size", 14)
+	canvas_layer.add_child(debug_label)
+
+	# Dynamic toggle list CheckBoxes
+	var vbox = VBoxContainer.new()
+	vbox.position = Vector2(5, 135)
+	canvas_layer.add_child(vbox)
+	
+	for key in Global.debug_toggles:
+		var cb = CheckBox.new()
+		cb.text = key.replace("_", " ").capitalize()
+		cb.button_pressed = Global.debug_toggles[key]
+		cb.toggled.connect(func(pressed: bool) -> void:
+			Global.debug_toggles[key] = pressed
+		)
+		vbox.add_child(cb)
+
+func _update_debug_text() -> void:
+	if debug_label:
+		var mem_mb = OS.get_static_memory_usage() / 1024.0 / 1024.0
+		var fps = Engine.get_frames_per_second()
+		debug_label.text = "FPS: %d\nMemory: %.2f MB\nPos: (%d, %d)\nVel: (%d, %d)\nAuto-run: %.1f\nStun: %.2f" % [
+			fps,
+			mem_mb,
+			global_position.x, global_position.y,
+			velocity.x, velocity.y,
+			auto_momentum,
+			stun_timer
+		]
+
+func get_local_lowest_y() -> float:
+	var player_x = global_position.x
+	var lowest_y = -999999.0
+	var found = false
+	for tile in get_tree().get_nodes_in_group("solid_tiles"):
+		if tile is Node2D:
+			if abs(tile.global_position.x - player_x) < 256.0:
+				if tile.global_position.y > lowest_y:
+					lowest_y = tile.global_position.y
+					found = true
+	if found:
+		return lowest_y
+	return 2000.0

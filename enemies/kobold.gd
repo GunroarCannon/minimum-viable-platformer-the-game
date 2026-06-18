@@ -6,6 +6,8 @@ var direction: int = -1
 
 func _ready() -> void:
 	super._ready()
+	tear_size  = Vector2(64, 96)
+	tear_color = Color(0.8, 0.5, 0.2)
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:
 		coll.shape.size = Vector2(64, 96)

@@ -14,6 +14,9 @@ var player: Node2D = null
 
 func _ready() -> void:
 	original_y = global_position.y
+	collision_layer = 2 # Detectable by spikes
+	collision_mask = 1 | 2 # Player (1) and Enemies (2)
+	
 	var collision_shape = $CollisionShape2D
 	if collision_shape and collision_shape.shape is RectangleShape2D:
 		collision_shape.shape.size = Vector2(smasher_size.x * 0.8, smasher_size.y * 0.9)
@@ -23,6 +26,21 @@ func _ready() -> void:
 		raycast.target_position = Vector2(0, smasher_size.y / 2 + 10)
 	
 	body_entered.connect(_on_body_entered)
+	area_entered.connect(_on_area_entered_smasher)
+
+	# Create one-way static top collision so player/enemies can land/stand on top safely
+	var sb = StaticBody2D.new()
+	sb.collision_layer = 1 # Solid floor/wall layer
+	sb.collision_mask = 0
+	var sb_coll = CollisionShape2D.new()
+	var sb_rect = RectangleShape2D.new()
+	sb_rect.size = Vector2(smasher_size.x * 0.8, 20)
+	sb_coll.shape = sb_rect
+	sb_coll.position = Vector2(0, -smasher_size.y / 2 + 10)
+	sb_coll.one_way_collision = true
+	sb_coll.one_way_collision_margin = 16.0
+	sb.add_child(sb_coll)
+	add_child(sb)
 
 func _process(delta: float) -> void:
 	if not player:
@@ -45,6 +63,7 @@ func _process(delta: float) -> void:
 				var hit_point = raycast.get_collision_point()
 				global_position.y = hit_point.y - smasher_size.y / 2
 				state = "smashed"
+				print("spike smashed")
 				smashed_timer = 1.0
 		"smashed":
 			smashed_timer -= delta
@@ -74,6 +93,26 @@ func _draw() -> void:
 	draw_polygon(points, PackedColorArray([Color(0.8, 0.8, 0.8)]))
 
 func _on_body_entered(body: Node2D) -> void:
-	# Kill player if touching while falling or smashed (prevent clipping exploit)
-	if (state == "falling" or state == "smashed") and body.has_method("die"):
-		body.die()
+	if state == "falling" or state == "smashed":
+		# Check if body is landing on top
+		var body_bottom = body.global_position.y
+		if body.get("collision_layer") == 1:
+			body_bottom += 55.0
+		elif body is BaseEnemy:
+			body_bottom += body.get("tear_size").y / 2.0
+			
+		if body_bottom < global_position.y - smasher_size.y / 2 + 15:
+			return
+
+		if body is BaseEnemy:
+			body.die_torn(Vector2(0, fall_speed))
+		elif body.has_method("die") and not body.get("is_dead"):
+			body.die()
+
+func die() -> void:
+	TearEffect.apply(self, smasher_size, Color(0.3, 0.3, 0.4), Vector2.ZERO)
+	queue_free()
+
+func _on_area_entered_smasher(area: Area2D) -> void:
+	if area.get_script() and area.get_script().resource_path.contains("spike"):
+		die()

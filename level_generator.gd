@@ -18,6 +18,8 @@ static var current_seed: int = 0
 @export var rock_scene: PackedScene = preload("res://enemies/rock.tscn")
 @export var kobold_scene: PackedScene = preload("res://enemies/kobold.tscn")
 @export var shooter_scene: PackedScene = preload("res://enemies/shooter.tscn")
+@export var drill_scene: PackedScene = preload("res://enemies/drill.tscn")
+@export var jumper_scene: PackedScene = preload("res://enemies/jumper.tscn")
 
 # Key: char in pattern string → value: entity id string or "spike"/"smasher" etc.
 var TEMPLATES: Array = [
@@ -101,6 +103,11 @@ var TEMPLATES: Array = [
 	{ "pattern": [".b.......b..", "............", "###.aaaa.###"],                          "b": "bat" },
 	{ "pattern": ["....b...", "........", ".k..s.k.", "########"],                          "b": "bat", "k": "kobold", "s": "spike" },
 	{ "pattern": ["............", ".b.......b..", "............", "s...s...s...", "############"], "b": "bat", "s": "spike" },
+	# ─── DRILL & JUMPER TEMPLATES ──────────────────────────────────────────────
+	{ "pattern": ["..d.....", "........", "........", "........", "########"],               "d": "drill" },
+	{ "pattern": [".d.......d...", "..............", ".............", ".............", "#############"],               "d": "drill" },
+	{ "pattern": ["........", "........", "....j...", "########"],                           "j": "jumper" },
+	{ "pattern": ["........", "........", ".j....j.", "########"],                           "j": "jumper" },
 ]
 
 var player: Node = null
@@ -130,6 +137,8 @@ func _spawn_entity(id: String, world_pos: Vector2) -> void:
 		"rock":     inst = rock_scene.instantiate()
 		"kobold":   inst = kobold_scene.instantiate()
 		"shooter":  inst = shooter_scene.instantiate()
+		"drill":    inst = drill_scene.instantiate()
+		"jumper":   inst = jumper_scene.instantiate()
 	if inst:
 		inst.position = world_pos
 		add_child(inst)
