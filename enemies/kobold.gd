@@ -4,6 +4,8 @@ extends BaseEnemy
 @export var walk_speed: float = 150.0
 var direction: int = -1
 
+var anim: AnimatedSprite2D = null
+
 func _ready() -> void:
 	super._ready()
 	tear_size  = Vector2(64, 96)
@@ -14,6 +16,25 @@ func _ready() -> void:
 	var hitbox_coll = $Hitbox/CollisionShape2D
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 106)
+
+	if not Global.use_primitives:
+		anim = AnimatedSprite2D.new()
+		var frames = SpriteFrames.new()
+		
+		frames.add_animation("walk")
+		for f in range(8):
+			var tex = load("res://assets/animations/kobold/" + str(f) + ".png")
+			if tex:
+				frames.add_frame("walk", tex)
+				
+		frames.set_animation_speed("walk", 12.0)
+		frames.set_animation_loop("walk", true)
+		
+		anim.sprite_frames = frames
+		anim.scale = Vector2(0.436, 0.436)
+		add_child(anim)
+		anim.play("walk")
+		anim.flip_h = direction < 0
 
 func _custom_process(delta: float) -> void:
 	if is_on_floor():
@@ -29,10 +50,18 @@ func _custom_process(delta: float) -> void:
 			
 		velocity.x = direction * walk_speed
 
+	if anim:
+		anim.flip_h = direction < 0
+
 func _draw() -> void:
-	draw_rect(Rect2(-32, -48, 64, 96), Color(0.8, 0.5, 0.2)) # Kobold color
-	var eye_x = direction * 15
-	draw_circle(Vector2(eye_x - 8, -30), 4, Color.RED)
-	draw_circle(Vector2(eye_x + 8, -30), 4, Color.RED)
-	draw_line(Vector2(eye_x - 12, -40), Vector2(eye_x - 4, -35), Color.BLACK, 2)
-	draw_line(Vector2(eye_x + 12, -40), Vector2(eye_x + 4, -35), Color.BLACK, 2)
+	if Global.use_primitives or not anim:
+		draw_rect(Rect2(-32, -48, 64, 96), Color(0.8, 0.5, 0.2)) # Kobold color
+		var eye_x = direction * 15
+		draw_circle(Vector2(eye_x - 8, -30), 4, Color.RED)
+		draw_circle(Vector2(eye_x + 8, -30), 4, Color.RED)
+		draw_line(Vector2(eye_x - 12, -40), Vector2(eye_x - 4, -35), Color.BLACK, 2)
+		draw_line(Vector2(eye_x + 12, -40), Vector2(eye_x + 4, -35), Color.BLACK, 2)
+
+	if Global.debug_toggles.get("show_collisions", false):
+		draw_rect(Rect2(-32, -48, 64, 96), Color.GREEN, false, 2.0)
+

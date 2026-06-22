@@ -5,6 +5,8 @@ class_name Spike
 @export var spike_size: Vector2 = Vector2(128, 128)
 @export var spike_color: Color = Color(1, 0, 0)
 
+var sprite: Sprite2D = null
+
 func _ready() -> void:
 	# Detect both player (layer 1) and living enemies (layer 2), but NOT bullets
 	collision_layer = 2
@@ -15,15 +17,35 @@ func _ready() -> void:
 		collision_shape.shape.size = Vector2(spike_size.x * 0.6, spike_size.y * 0.6)
 		collision_shape.position.y = spike_size.y * 0.2
 
+	if not Global.use_primitives:
+		sprite = Sprite2D.new()
+		sprite.texture = preload("res://assets/spikes.png")
+		if sprite.texture:
+			var tex_size = sprite.texture.get_size()
+			if tex_size.x > 0 and tex_size.y > 0:
+				sprite.scale = spike_size / tex_size
+		add_child(sprite)
+
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 
+func _process(_delta: float) -> void:
+	if Global.debug_toggles.get("show_collisions", false):
+		queue_redraw()
+
 func _draw() -> void:
-	var points = PackedVector2Array()
-	points.append(Vector2(-spike_size.x / 2, spike_size.y / 2))
-	points.append(Vector2(0, -spike_size.y / 2))
-	points.append(Vector2(spike_size.x / 2, spike_size.y / 2))
-	draw_polygon(points, PackedColorArray([spike_color]))
+	if Global.use_primitives or not sprite or not sprite.texture:
+		var points = PackedVector2Array()
+		points.append(Vector2(-spike_size.x / 2, spike_size.y / 2))
+		points.append(Vector2(0, -spike_size.y / 2))
+		points.append(Vector2(spike_size.x / 2, spike_size.y / 2))
+		draw_polygon(points, PackedColorArray([spike_color]))
+
+	if Global.debug_toggles.get("show_collisions", false):
+		var coll_size = Vector2(spike_size.x * 0.6, spike_size.y * 0.6)
+		var coll_pos = Vector2(-coll_size.x / 2, spike_size.y * 0.2 - coll_size.y / 2)
+		draw_rect(Rect2(coll_pos, coll_size), Color.GREEN, false, 2.0)
+
 
 func _on_body_entered(body: Node2D) -> void:
 	

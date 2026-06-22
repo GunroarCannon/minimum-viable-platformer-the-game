@@ -12,6 +12,11 @@ var state = "idle" # idle, falling, smashed, rising
 var smashed_timer: float = 0.0
 var player: Node2D = null
 
+var tex_normal = preload("res://assets/smasher_sharp/normal.png")
+var tex_angry = preload("res://assets/smasher_sharp/angry.png")
+var tex_hurt = preload("res://assets/smasher_sharp/hurt.png")
+var sprite: Sprite2D = null
+
 func _ready() -> void:
 	original_y = global_position.y
 	collision_layer = 2 # Detectable by spikes
@@ -28,6 +33,17 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered_smasher)
 
+	if not Global.use_primitives:
+		sprite = Sprite2D.new()
+		sprite.texture = tex_normal
+		if sprite.texture:
+			var tex_size = sprite.texture.get_size()
+			if tex_size.y > 0:
+				var scale_y = smasher_size.y / tex_size.y
+				sprite.scale = Vector2(scale_y, scale_y)
+		add_child(sprite)
+		queue_redraw()
+
 	# Create one-way static top collision so player/enemies can land/stand on top safely
 	var sb = StaticBody2D.new()
 	sb.collision_layer = 1 # Solid floor/wall layer
@@ -43,6 +59,8 @@ func _ready() -> void:
 	add_child(sb)
 
 func _process(delta: float) -> void:
+	if Global.debug_toggles.get("show_collisions", false):
+		queue_redraw()
 	if not player:
 		# Find player dynamically
 		var parent = get_parent()
@@ -75,22 +93,34 @@ func _process(delta: float) -> void:
 				global_position.y = original_y
 				state = "idle"
 
+	if sprite and not Global.use_primitives:
+		if state == "falling" or state == "smashed":
+			if sprite.texture != tex_angry:
+				sprite.texture = tex_angry
+		else:
+			if sprite.texture != tex_normal:
+				sprite.texture = tex_normal
+
 func _draw() -> void:
-	var rect = Rect2(-smasher_size / 2, smasher_size)
-	draw_rect(rect, Color(0.3, 0.3, 0.4)) # Dark Gray block
-	
-	# Draw angry "eyes" for personality
-	draw_rect(Rect2(-smasher_size.x/4 - 15, -20, 30, 20), Color(1, 0, 0))
-	draw_rect(Rect2(smasher_size.x/4 - 15, -20, 30, 20), Color(1, 0, 0))
-	
-	# Draw primitive spikes at the bottom
-	var points = PackedVector2Array()
-	points.append(Vector2(-smasher_size.x / 2, smasher_size.y / 2))
-	points.append(Vector2(-smasher_size.x / 4, smasher_size.y / 2 + 20))
-	points.append(Vector2(0, smasher_size.y / 2))
-	points.append(Vector2(smasher_size.x / 4, smasher_size.y / 2 + 20))
-	points.append(Vector2(smasher_size.x / 2, smasher_size.y / 2))
-	draw_polygon(points, PackedColorArray([Color(0.8, 0.8, 0.8)]))
+	if Global.use_primitives or not sprite or not sprite.texture:
+		var rect = Rect2(-smasher_size / 2, smasher_size)
+		draw_rect(rect, Color(0.3, 0.3, 0.4)) # Dark Gray block
+		
+		# Draw angry "eyes" for personality
+		draw_rect(Rect2(-smasher_size.x/4 - 15, -20, 30, 20), Color(1, 0, 0))
+		draw_rect(Rect2(smasher_size.x/4 - 15, -20, 30, 20), Color(1, 0, 0))
+		
+		# Draw screw threads / slanted lines style Spikes
+		var points = PackedVector2Array()
+		points.append(Vector2(-smasher_size.x / 2, smasher_size.y / 2))
+		points.append(Vector2(-smasher_size.x / 4, smasher_size.y / 2 + 20))
+		points.append(Vector2(0, smasher_size.y / 2))
+		points.append(Vector2(smasher_size.x / 4, smasher_size.y / 2 + 20))
+		points.append(Vector2(smasher_size.x / 2, smasher_size.y / 2))
+		draw_polygon(points, PackedColorArray([Color(0.8, 0.8, 0.8)]))
+
+	if Global.debug_toggles.get("show_collisions", false):
+		draw_rect(Rect2(-smasher_size / 2, smasher_size), Color.GREEN, false, 2.0)
 
 func _on_body_entered(body: Node2D) -> void:
 	if state == "falling" or state == "smashed":
@@ -110,6 +140,8 @@ func _on_body_entered(body: Node2D) -> void:
 			body.die()
 
 func die() -> void:
+	if sprite and not Global.use_primitives:
+		sprite.texture = tex_hurt
 	TearEffect.apply(self, smasher_size, Color(0.3, 0.3, 0.4), Vector2.ZERO)
 	queue_free()
 

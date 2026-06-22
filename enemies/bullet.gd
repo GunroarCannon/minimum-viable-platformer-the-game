@@ -4,6 +4,8 @@ extends BaseEnemy
 @export var fly_speed: float = 400.0
 var direction: int = -1
 
+var anim: AnimatedSprite2D = null
+
 func _ready() -> void:
 	gravity_scale  = 0.0  # Bullets fly straight
 	can_be_stomped = true
@@ -20,6 +22,25 @@ func _ready() -> void:
 	var hitbox_coll = $Hitbox/CollisionShape2D
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 58)
+
+	if not Global.use_primitives:
+		anim = AnimatedSprite2D.new()
+		var frames = SpriteFrames.new()
+		
+		frames.add_animation("fly")
+		for f in range(4):
+			var tex = load("res://assets/animations/bullet_bob/" + str(f) + ".png")
+			if tex:
+				frames.add_frame("fly", tex)
+				
+		frames.set_animation_speed("fly", 10.0)
+		frames.set_animation_loop("fly", true)
+		
+		anim.sprite_frames = frames
+		anim.scale = Vector2(0.4, 0.4)
+		add_child(anim)
+		anim.play("fly")
+		anim.flip_h = direction < 0
 
 	# Area2D that detects ALL enemy bodies (layer 2) — kills them on contact
 	var dmg_area = Area2D.new()
@@ -45,6 +66,9 @@ func _custom_process(_delta: float) -> void:
 	if is_on_wall():
 		die()
 
+	if anim:
+		anim.flip_h = direction < 0
+
 func stomp_by(stomper: Node2D) -> void:
 	if _is_dying: return
 	die()
@@ -53,17 +77,22 @@ func stomp_by(stomper: Node2D) -> void:
 		stomper.set("velocity", Vector2(body_vel.x, -700))
 
 func _draw() -> void:
-	draw_rect(Rect2(-32, -24, 64, 48), Color(0.1, 0.1, 0.1))
-	var points = PackedVector2Array()
-	if direction < 0:
-		points.append(Vector2(-32, -24))
-		points.append(Vector2(-48,   0))
-		points.append(Vector2(-32,  24))
-	else:
-		points.append(Vector2( 32, -24))
-		points.append(Vector2( 48,   0))
-		points.append(Vector2( 32,  24))
-	draw_polygon(points, PackedColorArray([Color(0.2, 0.2, 0.2)]))
-	var eye_x = direction * 15
-	draw_circle(Vector2(eye_x,                 -5), 5, Color.WHITE)
-	draw_circle(Vector2(eye_x + direction * 2, -5), 2, Color.RED)
+	if Global.use_primitives or not anim:
+		draw_rect(Rect2(-32, -24, 64, 48), Color(0.1, 0.1, 0.1))
+		var points = PackedVector2Array()
+		if direction < 0:
+			points.append(Vector2(-32, -24))
+			points.append(Vector2(-48,   0))
+			points.append(Vector2(-32,  24))
+		else:
+			points.append(Vector2( 32, -24))
+			points.append(Vector2( 48,   0))
+			points.append(Vector2( 32,  24))
+		draw_polygon(points, PackedColorArray([Color(0.2, 0.2, 0.2)]))
+		var eye_x = direction * 15
+		draw_circle(Vector2(eye_x,                 -5), 5, Color.WHITE)
+		draw_circle(Vector2(eye_x + direction * 2, -5), 2, Color.RED)
+
+	if Global.debug_toggles.get("show_collisions", false):
+		draw_rect(Rect2(-32, -24, 64, 48), Color.GREEN, false, 2.0)
+

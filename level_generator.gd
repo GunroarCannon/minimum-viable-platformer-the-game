@@ -56,7 +56,7 @@ var TEMPLATES: Array = [
 	{ "pattern": ["....##.....", "...........", "...........", "###########"] },
 
 	# ─── SMASHERS ──────────────────────────────────────────────────────────────
-	{ "pattern": ["..T.....", "........", "........", "........", "########"],               "T": "smasher" },
+	{ "pattern": ["....T.....", "..........", "..........", "..........", "##########"],               "T": "smasher" },
 	{ "pattern": [".T.......T...", "..............", ".............", ".............", "#############"],               "T": "smasher" },
 	{ "pattern": ["....T...", "........", "........", "##....##", "########"],               "T": "smasher" },
 	{ "pattern": ["..T.....", "........", "........", "..s.s.s.", "########"],               "T": "smasher", "s": "spike" },
@@ -116,9 +116,13 @@ func _ready() -> void:
 	generate_level()
 	setup_camera()
 
-func _spawn_tile(world_pos: Vector2) -> void:
+var dirt_tex = preload("res://assets/dirt_floor.png")
+var top_dirt_tex = preload("res://assets/top_dirt_floor.png")
+
+func _spawn_tile(world_pos: Vector2, is_top: bool = false) -> void:
 	var tile = tile_scene.instantiate()
 	tile.position = world_pos
+	tile.visual_texture = top_dirt_tex if is_top else dirt_tex
 	if tile.get("base_size"):
 		tile.base_size = tile_size
 	if tile.has_method("update_sizes"):
@@ -193,7 +197,7 @@ func generate_level() -> void:
 				if ch == '#':
 					for layer in range(3):
 						var ly = world_pos.y + layer * tile_size.y
-						_spawn_tile(Vector2(world_pos.x, ly))
+						_spawn_tile(Vector2(world_pos.x, ly), layer == 0)
 						if ly > lowest_y: lowest_y = ly
 
 				elif ch == 's' or (tmpl.has(ch) and tmpl[ch] == "spike"):
@@ -203,7 +207,7 @@ func generate_level() -> void:
 					spike.add_to_group("hazards")
 					for layer in range(1, 4):
 						var ly = world_pos.y + layer * tile_size.y
-						_spawn_tile(Vector2(world_pos.x, ly))
+						_spawn_tile(Vector2(world_pos.x, ly), layer == 1)
 						if ly > lowest_y: lowest_y = ly
 
 				elif ch == '/' or ch == '\\':
@@ -214,8 +218,9 @@ func generate_level() -> void:
 					add_child(ramp)
 					for layer in range(1, 4):
 						var ly = world_pos.y + layer * tile_size.y
-						_spawn_tile(Vector2(world_pos.x, ly))
+						_spawn_tile(Vector2(world_pos.x, ly), layer == 1)
 						if ly > lowest_y: lowest_y = ly
+
 
 				elif ch == 'a':
 					pass # Abyss — no floor spawned

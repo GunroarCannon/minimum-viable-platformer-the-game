@@ -40,6 +40,8 @@ func _physics_process(delta: float) -> void:
 	velocity.y += 980 * gravity_scale * delta
 	_custom_process(delta)
 	move_and_slide()
+	if Global.debug_toggles.get("show_collisions", false):
+		queue_redraw()
 
 func _custom_process(_delta: float) -> void:
 	pass

@@ -4,6 +4,8 @@ extends BaseEnemy
 @export var fly_speed: float = 200.0
 @export var trigger_distance: float = 1000.0
 
+var anim: AnimatedSprite2D = null
+
 func _ready() -> void:
 	gravity_scale = 0.0 # Ignore gravity
 	super._ready()
@@ -15,6 +17,24 @@ func _ready() -> void:
 	var hitbox_coll = $Hitbox/CollisionShape2D
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 74)
+
+	if not Global.use_primitives:
+		anim = AnimatedSprite2D.new()
+		var frames = SpriteFrames.new()
+		
+		frames.add_animation("fly")
+		for f in range(4):
+			var tex = load("res://assets/animations/bat/" + str(f) + ".png")
+			if tex:
+				frames.add_frame("fly", tex)
+				
+		frames.set_animation_speed("fly", 12.0)
+		frames.set_animation_loop("fly", true)
+		
+		anim.sprite_frames = frames
+		anim.scale = Vector2(0.4, 0.4)
+		add_child(anim)
+		anim.play("fly")
 
 var triggered: bool = false
 
@@ -31,19 +51,28 @@ func _custom_process(delta: float) -> void:
 			velocity = dir.normalized() * fly_speed
 		else:
 			velocity = velocity.move_toward(Vector2.ZERO, fly_speed * delta)
+	
+	if anim and velocity.x != 0:
+		# Flip based on moving direction
+		anim.flip_h = velocity.x < 0
 
 func _draw() -> void:
-	# Draw bat wings and body
-	var points = PackedVector2Array()
-	points.append(Vector2(0, -10))
-	points.append(Vector2(-32, -32))
-	points.append(Vector2(-10, 0))
-	points.append(Vector2(-32, 32))
-	points.append(Vector2(0, 10))
-	points.append(Vector2(32, 32))
-	points.append(Vector2(10, 0))
-	points.append(Vector2(32, -32))
-	draw_polygon(points, PackedColorArray([Color(0.2, 0.2, 0.2)]))
-	# Red eyes
-	draw_circle(Vector2(-5, -5), 3, Color.RED)
-	draw_circle(Vector2(5, -5), 3, Color.RED)
+	if Global.use_primitives or not anim:
+		# Draw bat wings and body
+		var points = PackedVector2Array()
+		points.append(Vector2(0, -10))
+		points.append(Vector2(-32, -32))
+		points.append(Vector2(-10, 0))
+		points.append(Vector2(-32, 32))
+		points.append(Vector2(0, 10))
+		points.append(Vector2(32, 32))
+		points.append(Vector2(10, 0))
+		points.append(Vector2(32, -32))
+		draw_polygon(points, PackedColorArray([Color(0.2, 0.2, 0.2)]))
+		# Red eyes
+		draw_circle(Vector2(-5, -5), 3, Color.RED)
+		draw_circle(Vector2(5, -5), 3, Color.RED)
+
+	if Global.debug_toggles.get("show_collisions", false):
+		draw_rect(Rect2(-32, -32, 64, 64), Color.GREEN, false, 2.0)
+

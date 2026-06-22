@@ -8,6 +8,8 @@ extends Node
 @export_enum("Hazard Distance:1", "Tile Count:2") var camera_zoom_mode: int = 2
 
 @export var debugText: bool = true
+@export var use_primitives: bool = false
+
 
 ## How much to multiply the base zoom by when zoomed out (< 1.0 = further out)
 @export var camera_zoom_out_factor: float = 0.62
@@ -29,6 +31,7 @@ extends Node
 @export var debug_toggles: Dictionary = {
 	"auto_restart": false,
 	"keep_seed": false,
+	"show_collisions": false,
 }
 
 

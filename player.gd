@@ -21,6 +21,16 @@ func _ready() -> void:
 	
 	print("[Player] _ready() END. Position: ", position)
 
+func _draw() -> void:
+	if Global.use_primitives:
+		# Draw primitive shape for the player: a blue/purple rectangle
+		draw_rect(Rect2(-40, -55, 80, 110), Color(0.2, 0.4, 0.9, 0.8), true)
+		# Draw eyes or front indicator
+		draw_rect(Rect2(10, -35, 15, 15), Color.WHITE, true)
+		draw_rect(Rect2(20, -30, 5, 5), Color.BLACK, true)
+	if Global.debug_toggles.get("show_collisions", false):
+		draw_rect(Rect2(-40, -55, 80, 110), Color.GREEN, false, 2.0)
+
 ## Automatically creates a SpriteFrames resource with all required animation states.
 func _auto_setup_sprite_frames() -> void:
 	print("[Player] _auto_setup_sprite_frames() called")
@@ -29,54 +39,63 @@ func _auto_setup_sprite_frames() -> void:
 		push_error("[Player] ERROR — anim is null! PlayerSprite export was not assigned.")
 		return
 
-	print("[Player] anim node: ", anim, " | current scale: ", anim.scale)
-
-	var placeholder_texture = load("res://a.png")
-	if not placeholder_texture:
-		push_warning("[Player] WARNING — 'res://a.png' not found.")
-	else:
-		var tex_size = placeholder_texture.get_size()
-		print("[Player] Loaded a.png — size: ", tex_size)
+	if Global.use_primitives:
+		anim.visible = false
+		queue_redraw()
+		return
+	
+	anim.visible = true
 
 	var new_frames = SpriteFrames.new()
+	var animations_to_load = {
+		"idle": { "path": "res://assets/animations/player/player_idle", "count": 4 },
+		"run": { "path": "res://assets/animations/player/player_run", "count": 7 },
+		"walk": { "path": "res://assets/animations/player/player_run", "count": 7 },
+		"jump": { "path": "res://assets/animations/player/player_jump", "count": 7 },
+		"falling": { "path": "res://assets/animations/player/player_jump", "count": 7 },
+		"slide": { "path": "res://assets/animations/player/player_run", "count": 7 },
+		"latch": { "path": "res://assets/animations/player/player_idle", "count": 4 },
+		"crouch_idle": { "path": "res://assets/animations/player/player_idle", "count": 4 },
+		"crouch_walk": { "path": "res://assets/animations/player/player_run", "count": 7 },
+		"roll": { "path": "res://assets/animations/player/player_run", "count": 7 },
+		"hurt_1": { "path": "res://assets/animations/player/player_hurt_1", "count": 3 },
+		"hurt_2": { "path": "res://assets/animations/player/player_hurt_2", "count": 3 }
+	}
 
-	var required_animations = [
-		"idle", "run", "walk", "jump", "falling",
-		"slide", "latch", "crouch_idle", "crouch_walk", "roll"
-	]
-
-	for anim_name in required_animations:
-		if anim_name == "idle" and new_frames.has_animation("default"):
-			new_frames.rename_animation("default", "idle")
-		elif not new_frames.has_animation(anim_name):
+	for anim_name in animations_to_load:
+		if not new_frames.has_animation(anim_name):
 			new_frames.add_animation(anim_name)
-
 		new_frames.set_animation_speed(anim_name, 10.0)
-		new_frames.set_animation_loop(anim_name, true)
-
-		if placeholder_texture:
-			new_frames.add_frame(anim_name, placeholder_texture)
-			print("[Player]   Added frame to animation '", anim_name, "'")
+		var is_loop = not (anim_name in ["jump", "falling", "hurt_1", "hurt_2"])
+		print("is loop? ", anim_name, is_loop)
+		new_frames.set_animation_loop(anim_name, is_loop)
+		
+		var cfg = animations_to_load[anim_name]
+		for f in range(cfg["count"]):
+			var path = cfg["path"] + "/" + str(f) + ".png"
+			var tex = load(path)
+			if tex:
+				new_frames.add_frame(anim_name, tex)
 
 	anim.sprite_frames = new_frames
 	print("[Player] SpriteFrames assigned to anim node")
 
 	# Scale sprite to visually fit the collision box size.
-	# Collision box is 80x110 px. Compute scale from actual texture dimensions.
-	if placeholder_texture:
-		var tex_size = placeholder_texture.get_size()
-		var target_size = Vector2(80.0, 110.0)
-		var new_scale = target_size / tex_size
-		anim.scale = new_scale
-		# Keep animScaleLock in sync so flipping works correctly in the base class
-		animScaleLock = abs(new_scale)
-		print("[Player] Sprite scale set to: ", new_scale, " | animScaleLock synced: ", animScaleLock)
+	# "Player asset is 160x220, but you can still check... prioritize the aspect ratio, and keep collisions the same."
+	# Collision box size is 80x110. Height of sprite matches 110 if scaled by 0.5.
+	# Aspect ratio: 160/220 = 80/110. Scaled by 0.5, both width and height match perfectly!
+	var new_scale = Vector2(0.5, 0.5)
+	anim.scale = new_scale
+	# Keep animScaleLock in sync so flipping works correctly in the base class
+	animScaleLock = abs(new_scale)
+	print("[Player] Sprite scale set to: ", new_scale, " | animScaleLock synced: ", animScaleLock)
 
 	anim.play("idle")
 	print("[Player] Playing 'idle' animation. anim.visible=", anim.visible,
 		  " | anim.modulate=", anim.modulate,
 		  " | anim.scale=", anim.scale,
 		  " | anim.position=", anim.position)
+
 
 @onready var dust_particles: CPUParticles2D = $DustParticles
 var _was_on_floor: bool = false
@@ -170,7 +189,7 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
-	var local_limit = get_local_lowest_y() + 384.0
+	var local_limit = get_local_lowest_y() + 192.0
 	if global_position.y > local_limit:
 		die(true)
 		return
@@ -202,6 +221,9 @@ func _physics_process(delta: float) -> void:
 			dust_particles.restart()
 			dust_particles.emitting = true
 		_squash_and_stretch(Vector2(0.6, 1.4))
+		if anim and not Global.use_primitives:
+			anim.frame = 0
+			anim.play("jump")
 
 	# Land squash
 	if is_on_floor() and not _was_on_floor:
@@ -238,6 +260,8 @@ func shake_camera(intensity: float, duration: float) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if Global.debug_toggles.get("show_collisions", false):
+		queue_redraw()
 	if _shake_timer > 0:
 		_shake_timer -= delta
 		var cam = _get_camera()
@@ -334,10 +358,6 @@ func die(is_fall: bool = false) -> void:
 			get_parent().add_child(cam)
 			cam.global_position = old_global
 
-		# Launch in the OPPOSITE horizontal direction + a little upward
-		var launch_dir = -sign(velocity.x) if velocity.x != 0.0 else -1.0
-		velocity = Vector2(launch_dir * 300.0, -480.0)
-
 		# Fall-over animation: rotate sprite to lie flat (90°), flash red
 		if anim:
 			var tween = create_tween()
@@ -362,10 +382,14 @@ func die(is_fall: bool = false) -> void:
 		get_parent().add_child(poof)
 		poof.global_position = global_position
 	else:
-		# Tear death!
+		# Play a random hurt animation intact for 1 frame, then shatter
 		collision_layer = 0
 		collision_mask = 0
 		velocity = Vector2.ZERO
+		if anim and not Global.use_primitives:
+			var anim_name = "hurt_1" if randf() < 0.5 else "hurt_2"
+			anim.play(anim_name)
+			await get_tree().process_frame
 		TearEffect.apply(self, Vector2(80, 110), Color(0.4, 0.8, 1.0), velocity, [], "circular")
 
 	# Wait for player to settle before reloading or showing game-over screen
