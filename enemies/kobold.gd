@@ -17,7 +17,7 @@ func _ready() -> void:
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 106)
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
 		var frames = SpriteFrames.new()
 		
@@ -54,7 +54,7 @@ func _custom_process(delta: float) -> void:
 		anim.flip_h = direction < 0
 
 func _draw() -> void:
-	if Global.use_primitives or not anim:
+	if not Global.gfx("enemy_sprites") or not anim:
 		draw_rect(Rect2(-32, -48, 64, 96), Color(0.8, 0.5, 0.2)) # Kobold color
 		var eye_x = direction * 15
 		draw_circle(Vector2(eye_x - 8, -30), 4, Color.RED)

@@ -22,7 +22,7 @@ func _ready() -> void:
 	if collision_shape and collision_shape.shape is RectangleShape2D:
 		collision_shape.shape.size = drill_size
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
 		var frames = SpriteFrames.new()
 		frames.add_animation("drill")
@@ -77,7 +77,7 @@ func _on_body_entered(body: Node) -> void:
 		body.die()
 
 func _draw() -> void:
-	if Global.use_primitives or not anim:
+	if not Global.gfx("enemy_sprites") or not anim:
 		# Draw a cool triangular/pointed drill shape so the user is wowed!
 		# Top body
 		draw_rect(Rect2(-drill_size.x / 2, -drill_size.y / 2, drill_size.x, drill_size.y * 0.4), Color(0.4, 0.4, 0.45))

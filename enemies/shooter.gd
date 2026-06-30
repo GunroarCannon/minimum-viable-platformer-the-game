@@ -14,7 +14,7 @@ func _ready() -> void:
 	collision_mask = 0
 	timer = shoot_interval
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
 		var frames = SpriteFrames.new()
 		
@@ -50,7 +50,7 @@ func _shoot() -> void:
 	get_parent().add_child(bullet)
 
 func _draw() -> void:
-	if Global.use_primitives or not anim:
+	if not Global.gfx("enemy_sprites") or not anim:
 		# Draw pillar
 		draw_rect(Rect2(-32, -64, 64, 128), Color(0.2, 0.2, 0.3))
 		# Draw cannon opening

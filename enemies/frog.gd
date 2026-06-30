@@ -21,7 +21,7 @@ func _ready() -> void:
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 74)
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
 		var frames = SpriteFrames.new()
 		
@@ -72,7 +72,7 @@ func _custom_process(delta: float) -> void:
 		anim.flip_h = velocity.x < 0
 
 func _draw() -> void:
-	if Global.use_primitives or not anim:
+	if not Global.gfx("enemy_sprites") or not anim:
 		draw_circle(Vector2(0, 0), 32, Color(0.2, 0.8, 0.2)) # Green body
 		# Eyes
 		draw_circle(Vector2(-15, -15), 8, Color.WHITE)

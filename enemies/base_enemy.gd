@@ -73,6 +73,9 @@ func die(torn: bool = false, impact_vel: Vector2 = Vector2.ZERO) -> void:
 	if _is_dying: return
 	_is_dying = true
 
+	# Blood splat lives one level up so it survives our queue_free().
+	BloodSplat.apply(get_parent(), global_position, impact_vel)
+
 	if torn and tears_on_death:
 		# Shatter into irregular physics polygons
 		TearEffect.apply(self, tear_size, tear_color, impact_vel, tear_hard_points, tear_type)

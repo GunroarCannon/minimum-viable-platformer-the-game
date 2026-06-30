@@ -33,7 +33,7 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered_smasher)
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		sprite = Sprite2D.new()
 		sprite.texture = tex_normal
 		if sprite.texture:
@@ -93,7 +93,7 @@ func _process(delta: float) -> void:
 				global_position.y = original_y
 				state = "idle"
 
-	if sprite and not Global.use_primitives:
+	if sprite and Global.gfx("enemy_sprites"):
 		if state == "falling" or state == "smashed":
 			if sprite.texture != tex_angry:
 				sprite.texture = tex_angry
@@ -102,7 +102,7 @@ func _process(delta: float) -> void:
 				sprite.texture = tex_normal
 
 func _draw() -> void:
-	if Global.use_primitives or not sprite or not sprite.texture:
+	if not Global.gfx("enemy_sprites") or not sprite or not sprite.texture:
 		var rect = Rect2(-smasher_size / 2, smasher_size)
 		draw_rect(rect, Color(0.3, 0.3, 0.4)) # Dark Gray block
 		
@@ -140,7 +140,7 @@ func _on_body_entered(body: Node2D) -> void:
 			body.die()
 
 func die() -> void:
-	if sprite and not Global.use_primitives:
+	if sprite and Global.gfx("enemy_sprites"):
 		sprite.texture = tex_hurt
 	TearEffect.apply(self, smasher_size, Color(0.3, 0.3, 0.4), Vector2.ZERO)
 	queue_free()

@@ -23,7 +23,7 @@ func _ready() -> void:
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 58)
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
 		var frames = SpriteFrames.new()
 		
@@ -77,7 +77,7 @@ func stomp_by(stomper: Node2D) -> void:
 		stomper.set("velocity", Vector2(body_vel.x, -700))
 
 func _draw() -> void:
-	if Global.use_primitives or not anim:
+	if not Global.gfx("enemy_sprites") or not anim:
 		draw_rect(Rect2(-32, -24, 64, 48), Color(0.1, 0.1, 0.1))
 		var points = PackedVector2Array()
 		if direction < 0:

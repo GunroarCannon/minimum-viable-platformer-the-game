@@ -17,7 +17,7 @@ func _ready() -> void:
 		collision_shape.shape.size = Vector2(spike_size.x * 0.6, spike_size.y * 0.6)
 		collision_shape.position.y = spike_size.y * 0.2
 
-	if not Global.use_primitives:
+	if Global.gfx("enemy_sprites"):
 		sprite = Sprite2D.new()
 		sprite.texture = preload("res://assets/spikes.png")
 		if sprite.texture:
@@ -34,7 +34,7 @@ func _process(_delta: float) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	if Global.use_primitives or not sprite or not sprite.texture:
+	if not Global.gfx("enemy_sprites") or not sprite or not sprite.texture:
 		var points = PackedVector2Array()
 		points.append(Vector2(-spike_size.x / 2, spike_size.y / 2))
 		points.append(Vector2(0, -spike_size.y / 2))
