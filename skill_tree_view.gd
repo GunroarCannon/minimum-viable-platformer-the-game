@@ -5,8 +5,8 @@ extends Control
 signal skill_selected(skill_id: String)
 signal skill_purchased(skill_id: String)
 
-const BASE_NODE_RADIUS := 36.0
-const BASE_GRID_SCALE  := Vector2(130.0, 110.0)
+const BASE_NODE_RADIUS := 34.0
+const BASE_GRID_SCALE  := Vector2(92.0, 82.0)
 const MIN_ZOOM := 0.35
 const MAX_ZOOM := 1.8
 
@@ -53,8 +53,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 func _world_pos(skill_id: String) -> Vector2:
-	var d = SkillsDB.SKILLS[skill_id]
-	var p: Vector2 = d["tree_pos"]
+	var p: Vector2 = SkillsDB.get_tree_pos(skill_id)
 	return _camera_offset + p * _grid_scale()
 
 ## True if the node should be drawn / hit-testable right now.

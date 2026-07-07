@@ -175,7 +175,8 @@ static func _apply_polished(root: Node) -> void:
 ## Draw a rounded pill "switch" behind the checkbox and swap the tick icons.
 static func _style_checkbox_polished(cb: CheckBox) -> void:
 	cb.add_theme_color_override("font_color", COL_INK)
-	cb.add_theme_font_size_override("font_size", 22)
+	cb.add_theme_font_size_override("font_size", 24)
+	cb.add_theme_constant_override("h_separation", 14)
 	# Clear default button chrome.
 	var empty := StyleBoxEmpty.new()
 	cb.add_theme_stylebox_override("normal", empty)
@@ -192,8 +193,10 @@ static func _style_checkbox_polished(cb: CheckBox) -> void:
 	cb.add_theme_icon_override("radio_checked",   _switch_icon(true))
 
 static func _switch_icon(on: bool, disabled: bool = false) -> ImageTexture:
-	var w := 56
-	var h := 28
+	# Chunky pill switch. Larger than a default checkbox so it reads as a
+	# physical toggle at a glance when the polished UI upgrade is on.
+	var w := 88
+	var h := 44
 	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var track_col := (Color(0.85, 0.62, 0.24) if on else Color(0.55, 0.50, 0.45))

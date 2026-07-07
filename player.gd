@@ -19,6 +19,15 @@ var _use_motion_trail:  bool = false
 var _use_footstep_dust: bool = false
 var _use_impact_freeze: bool = false
 var _use_hit_flash:     bool = false
+var _use_near_miss:     bool = false
+
+# Near-miss slow-mo bookkeeping. Cooldown gates back-to-back triggers so
+# passing several enemies in a chain only fires one cinematic beat.
+const NEAR_MISS_RADIUS := 140.0
+const NEAR_MISS_COOLDOWN := 1.2
+const NEAR_MISS_CHANCE := 0.30
+var _near_miss_cd: float = 0.0
+var _near_miss_active: Dictionary = {}
 
 func _resolve_flags() -> void:
 	# When primitives is forced via debug, everything visual stays primitive.
@@ -38,6 +47,7 @@ func _resolve_flags() -> void:
 	_use_footstep_dust = Global.is_unlocked("footstep_dust")
 	_use_impact_freeze = Global.is_unlocked("impact_freeze")
 	_use_hit_flash     = Global.is_unlocked("hit_flash")
+	_use_near_miss     = Global.is_unlocked("near_miss_slowmo")
 
 func _ready() -> void:
 	super._ready()
@@ -443,6 +453,63 @@ func _process(delta: float) -> void:
 		_update_dynamic_zoom(delta)
 	_tick_motion_trail()
 	_tick_footstep_dust()
+	if _use_near_miss:
+		_tick_near_miss(delta)
+	if _use_double_jump:
+		_tick_double_jump_pulse(delta)
+
+## Pulse the player's color while they are airborne with at least one jump
+## still banked but not all — a visual "you can still jump again" cue.
+## Uses jumpCount from the platformer addon (0 = no jumps left).
+var _dj_pulse_t: float = 0.0
+var _dj_pulsing: bool = false
+var _dj_orig_modulate: Color = Color.WHITE
+func _tick_double_jump_pulse(delta: float) -> void:
+	var target: CanvasItem = anim if (anim and _use_sprite_player and anim.visible) else self
+	var can_pulse: bool = (not is_on_floor()) and jumpCount > 0 and jumpCount < jumps
+	if can_pulse:
+		if not _dj_pulsing:
+			_dj_pulsing = true
+			_dj_orig_modulate = target.modulate
+			_dj_pulse_t = 0.0
+		_dj_pulse_t += delta
+		# ~2 Hz breathing between the base tint and a bright cyan-ish highlight.
+		var s: float = 0.5 + 0.5 * sin(_dj_pulse_t * TAU * 2.0)
+		var hi := Color(0.55, 1.15, 1.55, _dj_orig_modulate.a)
+		target.modulate = _dj_orig_modulate.lerp(hi, s * 0.85)
+	elif _dj_pulsing:
+		_dj_pulsing = false
+		target.modulate = _dj_orig_modulate
+
+## Detect when the player passes close to a live hazard without touching it and
+## roll for a brief slow-motion beat. Uses wall-time timers so the reset fires
+## even while Engine.time_scale is low.
+func _tick_near_miss(delta: float) -> void:
+	if _near_miss_cd > 0.0:
+		_near_miss_cd -= delta
+	var hazards := get_tree().get_nodes_in_group("hazards")
+	var still_close: Dictionary = {}
+	for h in hazards:
+		if not h is Node2D: continue
+		if not is_instance_valid(h): continue
+		var dist: float = global_position.distance_to((h as Node2D).global_position)
+		if dist > NEAR_MISS_RADIUS: continue
+		still_close[h] = true
+		if _near_miss_active.has(h): continue  # already tracked this pass
+		if _near_miss_cd > 0.0: continue
+		if randf() > NEAR_MISS_CHANCE: continue
+		_trigger_near_miss()
+		break
+	_near_miss_active = still_close
+
+func _trigger_near_miss() -> void:
+	_near_miss_cd = NEAR_MISS_COOLDOWN
+	Engine.time_scale = 0.25
+	if Global.is_unlocked("chromatic_aberration"):
+		ScreenFX.kick_chromatic(0.014, 0.5)
+	# 0.5s wall-time slow beat, then restore. Ignore time-scale so it fires reliably.
+	var t := get_tree().create_timer(0.5, true, false, true)
+	t.timeout.connect(func(): Engine.time_scale = 1.0)
 
 func _update_dynamic_zoom(_delta: float) -> void:
 	var cam = _get_camera()
@@ -506,7 +573,7 @@ func _get_camera() -> Camera2D:
 			return child
 	return null
 
-func die(is_fall: bool = false, cause: String = "") -> void:
+func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = false) -> void:
 	if is_dead: return
 	is_dead = true
 	if cause == "" and is_fall:
@@ -570,25 +637,27 @@ func die(is_fall: bool = false, cause: String = "") -> void:
 		collision_mask = 0
 		velocity = Vector2.ZERO
 
-		# Death flash + squash animation before the tear/hide.
-		var target_node: Node = anim if (anim and _use_sprite_player) else self
-		var death_flash := create_tween()
-		death_flash.tween_property(target_node, "modulate",
-			Color(2.5, 2.5, 2.5, 1.0), 0.05)
-		death_flash.tween_property(target_node, "modulate",
-			Color(1.0, 0.18, 0.18, 1.0), 0.10)
-		if _use_juice and anim and _use_sprite_player:
-			var base_s: Vector2 = animScaleLock if animScaleLock != Vector2.ZERO else Vector2(0.5, 0.5)
-			death_flash.parallel().tween_property(anim, "scale",
-				base_s * Vector2(1.5, 0.5), 0.07)
-			death_flash.tween_property(anim, "scale",
-				base_s, 0.12).set_trans(Tween.TRANS_BACK)
-		await death_flash.finished
+		# Smasher (and other instant-shatter causes) skip the flash+squash intro
+		# and go straight to the tear so the player feels genuinely crushed.
+		if not instant_shatter:
+			var target_node: Node = anim if (anim and _use_sprite_player) else self
+			var death_flash := create_tween()
+			death_flash.tween_property(target_node, "modulate",
+				Color(2.5, 2.5, 2.5, 1.0), 0.05)
+			death_flash.tween_property(target_node, "modulate",
+				Color(1.0, 0.18, 0.18, 1.0), 0.10)
+			if _use_juice and anim and _use_sprite_player:
+				var base_s: Vector2 = animScaleLock if animScaleLock != Vector2.ZERO else Vector2(0.5, 0.5)
+				death_flash.parallel().tween_property(anim, "scale",
+					base_s * Vector2(1.5, 0.5), 0.07)
+				death_flash.tween_property(anim, "scale",
+					base_s, 0.12).set_trans(Tween.TRANS_BACK)
+			await death_flash.finished
 
-		if anim and _use_sprite_anims:
-			var anim_name = "hurt_1" if randf() < 0.5 else "hurt_2"
-			anim.play(anim_name)
-			await get_tree().process_frame
+			if anim and _use_sprite_anims:
+				var anim_name = "hurt_1" if randf() < 0.5 else "hurt_2"
+				anim.play(anim_name)
+				await get_tree().process_frame
 		if _use_tears:
 			TearEffect.apply(self, Vector2(80, 110), Color(0.4, 0.8, 1.0), velocity, [], "circular")
 		else:

@@ -137,7 +137,7 @@ func _on_body_entered(body: Node2D) -> void:
 		if body is BaseEnemy:
 			body.die_torn(Vector2(0, fall_speed))
 		elif body.has_method("die") and not body.get("is_dead"):
-			body.die(false, "a smasher")
+			body.die(false, "a smasher", true)
 
 func die() -> void:
 	if sprite and Global.gfx("enemy_sprites"):

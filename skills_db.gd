@@ -4,10 +4,11 @@ extends Node
 ## Adding a new skill = appending one Dictionary entry. UI + gating discover it.
 ##
 ## Required fields:
-##   id, name, desc, cost, requires, branch, tree_pos
+##   id, name, desc, cost, requires, branch
 ## Optional:
 ##   feature   – override gating key if it differs from id
 ##   icon      – single glyph drawn on the node
+## Positions on the skill tree are computed dynamically — see LAYOUT below.
 
 const ROOT_ID := "ui"
 
@@ -16,12 +17,203 @@ const ROOT_ID := "ui"
 # Edit PATH_COSTS to reshape the whole economy in one line.
 # Depths beyond the table use the last value * PATH_TAIL_MULT^extra.
 # A skill dict may set "cost_override" to pin a bespoke price.
-const PATH_COSTS := [1, 2, 4, 10, 20, 50]
-const PATH_TAIL_MULT := 2.0
+const PATH_COSTS := [1, 3, 9, 27, 81, 243]
+const PATH_TAIL_MULT := 3.0
 const COST_MAX  := 999
 
 var _cost_cache: Dictionary = {}
 var _depth_cache: Dictionary = {}
+
+# ─── LAYOUT ───────────────────────────────────────────────────────────────
+# Positions are computed radially: each branch owns an angular sector,
+# depth from root maps to ring radius, and siblings split their parent's
+# angular slice proportional to their subtree leaf count. No hardcoded
+# coordinates in the SKILLS dict.
+const LAYOUT_BASE_RADIUS := 2.4
+const LAYOUT_RING_STEP := 2.1
+const LAYOUT_MIN_ARC := 0.24   # radians; guards against ultra-thin slices
+
+# Force-directed relaxation (Fruchterman-Reingold) settles the seeded radial
+# layout so nodes are evenly spaced and cross-branch edges don't crush the
+# graph. Runs once on first tree open, then cached.
+# Tightened: shorter ideal spring + stronger branch pull keeps branches
+# radiating out cleanly instead of curling into each other.
+const FR_ITERATIONS := 260
+const FR_IDEAL_LENGTH := 1.9
+const FR_INITIAL_TEMP := 2.0
+const FR_COOL := 0.985
+const FR_MIN_TEMP := 0.02
+const FR_BRANCH_PULL := 0.10   # stronger per-iter pull toward each node's branch ray
+const BRANCH_ANGLES := {
+	"moves":    0.0,
+	"level":    PI / 6.0,
+	"graphics": PI / 3.0,
+	"enemies":  PI / 2.0,
+	"ui":       PI,
+	"juice":    PI * 1.25,
+	"camera":   PI * 1.5,
+	"shaders":  PI * 1.75,
+}
+const BRANCH_SECTOR_HALF := PI / 8.0  # 22.5° half-width per branch
+
+var _layout_positions: Dictionary = {}
+var _layout_dirty: bool = true
+var _tree_children_cache: Dictionary = {}
+
+func get_tree_pos(sid: String) -> Vector2:
+	if _layout_dirty:
+		_compute_layout()
+	return _layout_positions.get(sid, Vector2.ZERO)
+
+func _tree_parent(sid: String) -> String:
+	if sid == ROOT_ID: return ""
+	var d = SKILLS.get(sid, null)
+	if d == null: return ""
+	var reqs: Array = d.get("requires", [])
+	if reqs.is_empty(): return ""
+	return String(reqs[0])
+
+func _tree_children(sid: String) -> Array:
+	if _tree_children_cache.has(sid):
+		return _tree_children_cache[sid]
+	var out: Array = []
+	for other in SKILLS.keys():
+		if other == sid: continue
+		if _tree_parent(other) == sid:
+			out.append(other)
+	_tree_children_cache[sid] = out
+	return out
+
+func _leaf_count(sid: String, cache: Dictionary) -> int:
+	if cache.has(sid): return int(cache[sid])
+	var kids := _tree_children(sid)
+	var n: int
+	if kids.is_empty():
+		n = 1
+	else:
+		n = 0
+		for k in kids:
+			n += _leaf_count(k, cache)
+	cache[sid] = n
+	return n
+
+func _compute_layout() -> void:
+	_layout_positions.clear()
+	_tree_children_cache.clear()
+	_seed_radial()
+	_relax_forces()
+	_layout_dirty = false
+
+func _seed_radial() -> void:
+	_layout_positions[ROOT_ID] = Vector2.ZERO
+	var leaves := {}
+	_leaf_count(ROOT_ID, leaves)
+
+	# Group root's direct children by branch so each branch owns a sector.
+	var roots := _tree_children(ROOT_ID)
+	var by_branch: Dictionary = {}
+	for r in roots:
+		var b: String = SKILLS[r].get("branch", "ui")
+		if not by_branch.has(b): by_branch[b] = []
+		by_branch[b].append(r)
+
+	for b in by_branch.keys():
+		var center: float = float(BRANCH_ANGLES.get(b, 0.0))
+		var half: float = BRANCH_SECTOR_HALF
+		var siblings: Array = by_branch[b]
+		var total: int = 0
+		for s in siblings:
+			total += _leaf_count(s, leaves)
+		var cur: float = center - half
+		for s in siblings:
+			var lc: int = _leaf_count(s, leaves)
+			var w: float = 2.0 * half * float(lc) / float(max(1, total))
+			_place_subtree(s, cur + w * 0.5, w * 0.5, 1, leaves)
+			cur += w
+
+func _all_edges() -> Array:
+	# Every `requires` link becomes a spring, including cross-branch ones.
+	var out: Array = []
+	for sid in SKILLS.keys():
+		var reqs: Array = SKILLS[sid].get("requires", [])
+		for r in reqs:
+			if SKILLS.has(r):
+				out.append([String(sid), String(r)])
+	return out
+
+func _relax_forces() -> void:
+	var edges := _all_edges()
+	var ids: Array = SKILLS.keys()
+	var disp: Dictionary = {}
+	var k := FR_IDEAL_LENGTH
+	var k2 := k * k
+	var temp := FR_INITIAL_TEMP
+	for _iter in range(FR_ITERATIONS):
+		for id in ids:
+			disp[id] = Vector2.ZERO
+		# Repulsion — every pair pushes apart.
+		var n := ids.size()
+		for i in range(n):
+			var a: String = ids[i]
+			var pa: Vector2 = _layout_positions[a]
+			for j in range(i + 1, n):
+				var b: String = ids[j]
+				var pb: Vector2 = _layout_positions[b]
+				var d: Vector2 = pa - pb
+				var dist: float = max(0.05, d.length())
+				var f: float = k2 / dist
+				var push: Vector2 = (d / dist) * f
+				disp[a] += push
+				disp[b] -= push
+		# Attraction along edges — springs.
+		for e in edges:
+			var u: String = e[0]
+			var v: String = e[1]
+			var d2: Vector2 = _layout_positions[u] - _layout_positions[v]
+			var dist2: float = max(0.05, d2.length())
+			var f2: float = (dist2 * dist2) / k
+			var pull: Vector2 = (d2 / dist2) * f2
+			disp[u] -= pull
+			disp[v] += pull
+		# Weak anchor pulling each node toward its branch ray at its own depth,
+		# so branches stay pointed outward instead of curling into a blob.
+		for sid in ids:
+			if sid == ROOT_ID: continue
+			var branch: String = SKILLS[sid].get("branch", "ui")
+			var ang: float = float(BRANCH_ANGLES.get(branch, 0.0))
+			var depth: int = depth_from_root(sid)
+			var target_r: float = LAYOUT_BASE_RADIUS + LAYOUT_RING_STEP * float(depth - 1)
+			var target: Vector2 = Vector2(cos(ang), -sin(ang)) * target_r
+			disp[sid] += (target - _layout_positions[sid]) * FR_BRANCH_PULL
+		# Apply, clamped to temperature. Root stays pinned at origin.
+		for sid in ids:
+			if sid == ROOT_ID:
+				_layout_positions[sid] = Vector2.ZERO
+				continue
+			var d3: Vector2 = disp[sid]
+			var dl: float = d3.length()
+			if dl > temp:
+				d3 = d3 * (temp / dl)
+			_layout_positions[sid] += d3
+		temp = max(FR_MIN_TEMP, temp * FR_COOL)
+
+func _place_subtree(sid: String, angle: float, half_width: float, depth: int, leaves: Dictionary) -> void:
+	var r: float = LAYOUT_BASE_RADIUS + LAYOUT_RING_STEP * float(depth - 1)
+	_layout_positions[sid] = Vector2(cos(angle) * r, -sin(angle) * r)
+	var kids := _tree_children(sid)
+	if kids.is_empty(): return
+	# Widen the sector for branchy subtrees so children don't crowd the parent
+	# angle. Falls back to the parent's own slice for single-child chains.
+	var desired: float = max(half_width, min(PI / 5.0, LAYOUT_MIN_ARC * float(kids.size())))
+	var total: int = 0
+	for k in kids:
+		total += _leaf_count(k, leaves)
+	var cur: float = angle - desired
+	for k in kids:
+		var lc: int = _leaf_count(k, leaves)
+		var w: float = 2.0 * desired * float(lc) / float(max(1, total))
+		_place_subtree(k, cur + w * 0.5, w * 0.5, depth + 1, leaves)
+		cur += w
 
 func compute_cost(skill_id: String) -> int:
 	if _cost_cache.has(skill_id): return int(_cost_cache[skill_id])
@@ -74,7 +266,7 @@ var SKILLS: Dictionary = {
 		"id": "ui", "name": "Unlock UI",
 		"desc": "Adds the main menu, shop and settings screens.\nWithout this you only see the game world.",
 		"cost": 1, "requires": [], "branch": "ui",
-		"tree_pos": Vector2(0, 0), "icon": "UI",
+		"icon": "UI",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -84,25 +276,25 @@ var SKILLS: Dictionary = {
 		"id": "ui_polished", "name": "Polished UI",
 		"desc": "Rounded panels, smooth hover animations, custom colours.",
 		"cost": 4, "requires": ["ui"], "branch": "ui",
-		"tree_pos": Vector2(-3.0, -1.5), "icon": "PL",
+		"icon": "PL",
 	},
 	"main_menu_extras": {
 		"id": "main_menu_extras", "name": "Menu Polish",
 		"desc": "Animated title intro, button SFX hooks.",
 		"cost": 3, "requires": ["ui_polished"], "branch": "ui",
-		"tree_pos": Vector2(-5.0, -2.5), "icon": "MP",
+		"icon": "MP",
 	},
 	"hud": {
 		"id": "hud", "name": "In-Game HUD",
 		"desc": "Distance and token counters appear during play.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
-		"tree_pos": Vector2(-3.0, 1.5), "icon": "HD",
+		"icon": "HD",
 	},
 	"pause_menu": {
 		"id": "pause_menu", "name": "Pause Menu",
 		"desc": "Press Esc to pause and access shop / menu mid-run.",
 		"cost": 2, "requires": ["hud"], "branch": "ui",
-		"tree_pos": Vector2(-5.0, 2.5), "icon": "PS",
+		"icon": "PS",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -112,49 +304,49 @@ var SKILLS: Dictionary = {
 		"id": "juice_squash", "name": "Squash & Stretch",
 		"desc": "Player squishes on jump and lands with a satisfying squash.\nFloors squish on landing too.",
 		"cost": 2, "requires": ["ui"], "branch": "juice",
-		"tree_pos": Vector2(-3.0, 4.5), "icon": "SS",
+		"icon": "SS",
 	},
 	"hit_flash": {
 		"id": "hit_flash", "name": "Hit Flash",
 		"desc": "Things flash white when stomped or stunned.",
 		"cost": 1, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-5.0, 4.0), "icon": "HF",
+		"icon": "HF",
 	},
 	"impact_freeze": {
 		"id": "impact_freeze", "name": "Impact Freeze",
 		"desc": "Time briefly pauses on heavy impacts. Feels chunky.",
-		"cost": 2, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-4.0, 6.0), "icon": "IF",
+		"cost": 2, "requires": ["juice_squash", "camera_shake"], "branch": "juice",
+		"icon": "IF",
 	},
 	"motion_trail": {
 		"id": "motion_trail", "name": "Motion Trail",
 		"desc": "A trailing afterimage follows the running player.",
-		"cost": 2, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-1.5, 6.0), "icon": "MT",
+		"cost": 2, "requires": ["juice_squash", "sprint"], "branch": "juice",
+		"icon": "MT",
 	},
 	"footstep_dust": {
 		"id": "footstep_dust", "name": "Footstep Dust",
 		"desc": "Small puffs kick up while you sprint along the ground.",
 		"cost": 1, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-6.5, 3.0), "icon": "FD",
+		"icon": "FD",
 	},
 	"tear_effects": {
 		"id": "tear_effects", "name": "Tear Effects",
 		"desc": "Things shatter into rigid-body pieces when destroyed.",
 		"cost": 3, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-6.5, 5.5), "icon": "TE",
+		"icon": "TE",
 	},
 	"blood_splats": {
 		"id": "blood_splats", "name": "Blood Splats",
 		"desc": "Death is messy. Circular red splatter on enemy and player death.\nBlood trail direction follows impact velocity.",
 		"cost": 2, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-2.5, 8.0), "icon": "BS",
+		"icon": "BS",
 	},
 	"blood_marks": {
 		"id": "blood_marks", "name": "Blood Stains",
 		"desc": "Blood splatters leave persistent circular marks on the level floor.\nMarks persist for the whole run. Toggle blood trail in Settings.",
 		"cost": 2, "requires": ["blood_splats"], "branch": "juice",
-		"tree_pos": Vector2(-3.5, 10.0), "icon": "BM",
+		"icon": "BM",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -164,13 +356,13 @@ var SKILLS: Dictionary = {
 		"id": "camera_shake", "name": "Camera Shake",
 		"desc": "Big impacts shake the camera. More game-feel.",
 		"cost": 2, "requires": ["ui"], "branch": "camera",
-		"tree_pos": Vector2(0.5, 3.0), "icon": "CS",
+		"icon": "CS",
 	},
 	"dynamic_zoom": {
 		"id": "dynamic_zoom", "name": "Dynamic Zoom",
 		"desc": "Camera zooms out over wide gaps so you can see what's coming.",
-		"cost": 3, "requires": ["camera_shake"], "branch": "camera",
-		"tree_pos": Vector2(1.0, 5.0), "icon": "DZ",
+		"cost": 3, "requires": ["camera_shake", "parallax"], "branch": "camera",
+		"icon": "DZ",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -180,31 +372,31 @@ var SKILLS: Dictionary = {
 		"id": "vignette", "name": "Vignette",
 		"desc": "Darkened corners for cinematic framing.",
 		"cost": 2, "requires": ["ui_polished"], "branch": "shaders",
-		"tree_pos": Vector2(3.0, 3.0), "icon": "VG",
+		"icon": "VG",
 	},
 	"chromatic_aberration": {
 		"id": "chromatic_aberration", "name": "Chromatic Aber.",
 		"desc": "RGB channels split at the edges, exaggerated under impact.",
 		"cost": 2, "requires": ["vignette"], "branch": "shaders",
-		"tree_pos": Vector2(5.0, 4.5), "icon": "CA",
+		"icon": "CA",
 	},
 	"color_grading": {
 		"id": "color_grading", "name": "Color Grading",
 		"desc": "Warm filmic tint and punchier saturation.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "shaders",
-		"tree_pos": Vector2(3.5, -1.0), "icon": "CG",
+		"icon": "CG",
 	},
 	"crt_filter": {
 		"id": "crt_filter", "name": "CRT Filter",
 		"desc": "Scanlines and screen curvature.",
 		"cost": 3, "requires": ["chromatic_aberration"], "branch": "shaders",
-		"tree_pos": Vector2(7.0, 5.5), "icon": "CR",
+		"icon": "CR",
 	},
 	"wobble_shader": {
 		"id": "wobble_shader", "name": "Air Warp",
 		"desc": "The screen warps as the player falls — intensity scales with vertical speed.",
 		"cost": 3, "requires": ["crt_filter"], "branch": "shaders",
-		"tree_pos": Vector2(6.5, 7.5), "icon": "AW",
+		"icon": "AW",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -214,19 +406,19 @@ var SKILLS: Dictionary = {
 		"id": "sprint", "name": "Sprint",
 		"desc": "Higher top speed when auto-running.",
 		"cost": 2, "requires": ["ui"], "branch": "moves",
-		"tree_pos": Vector2(2.5, 0.5), "icon": "SP",
+		"icon": "SP",
 	},
 	"double_jump": {
 		"id": "double_jump", "name": "Double Jump",
 		"desc": "Press jump again in mid-air to leap a second time.",
 		"cost": 3, "requires": ["sprint"], "branch": "moves",
-		"tree_pos": Vector2(4.5, 0.0), "icon": "DJ",
+		"icon": "DJ",
 	},
 	"wall_jump": {
 		"id": "wall_jump", "name": "Wall Jump",
 		"desc": "Jump again off walls during a slide.",
 		"cost": 3, "requires": ["double_jump"], "branch": "moves",
-		"tree_pos": Vector2(6.5, -0.5), "icon": "WJ",
+		"icon": "WJ",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -236,61 +428,61 @@ var SKILLS: Dictionary = {
 		"id": "drawn_floors", "name": "Drawn Floors",
 		"desc": "Replaces primitive blocks with hand-drawn wavy yellow-green platforms.",
 		"cost": 2, "requires": ["ui"], "branch": "graphics",
-		"tree_pos": Vector2(2.0, -2.5), "icon": "DF",
+		"icon": "DF",
 	},
 	"foliage": {
 		"id": "foliage", "name": "Foliage",
 		"desc": "Little tufts of grass and flowers along the floor edge.\nOnly appears on grounded platforms, not floating ones.",
 		"cost": 1, "requires": ["drawn_floors"], "branch": "graphics",
-		"tree_pos": Vector2(0.5, -4.0), "icon": "FO",
+		"icon": "FO",
 	},
 	"palette_switcher": {
 		"id": "palette_switcher", "name": "Palette Switcher",
 		"desc": "Unlocks colour palette options in Settings.\nChoose from Default, Warm, Cool, Night, and Neon themes.",
 		"cost": 3, "requires": ["drawn_floors"], "branch": "graphics",
-		"tree_pos": Vector2(2.5, -4.5), "icon": "PA",
+		"icon": "PA",
 	},
 	"particles": {
 		"id": "particles", "name": "Particles",
 		"desc": "Dust on landing, smoke on death, sparks on stomp.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "graphics",
-		"tree_pos": Vector2(4.5, -3.5), "icon": "PT",
+		"icon": "PT",
 	},
 	"player_sprite": {
 		"id": "player_sprite", "name": "Player Sprite",
 		"desc": "Replaces the player rectangle with proper character art.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "graphics",
-		"tree_pos": Vector2(5.5, -2.0), "icon": "PX",
+		"icon": "PX",
 	},
 	"sprite_animations": {
 		"id": "sprite_animations", "name": "Sprite Anims",
 		"desc": "Idle, run, jump and hurt animations play for the player.",
 		"cost": 3, "requires": ["player_sprite"], "branch": "graphics",
-		"tree_pos": Vector2(7.0, -2.5), "icon": "SA",
+		"icon": "SA",
 	},
 	"outline": {
 		"id": "outline", "name": "Sprite Outline",
 		"desc": "Dark ink outline around the player sprite.",
 		"cost": 2, "requires": ["player_sprite"], "branch": "shaders",
-		"tree_pos": Vector2(8.0, -4.5), "icon": "OL",
+		"icon": "OL",
 	},
 	"parallax": {
 		"id": "parallax", "name": "Parallax Backdrop",
 		"desc": "Multi-layer scrolling background hills.",
 		"cost": 3, "requires": ["drawn_floors"], "branch": "graphics",
-		"tree_pos": Vector2(1.0, -6.0), "icon": "PB",
+		"icon": "PB",
 	},
 	"clouds": {
 		"id": "clouds", "name": "Clouds",
 		"desc": "Soft clouds drift across the sky.",
 		"cost": 2, "requires": ["parallax"], "branch": "graphics",
-		"tree_pos": Vector2(-0.5, -7.5), "icon": "CL",
+		"icon": "CL",
 	},
 	"sky_color": {
 		"id": "sky_color", "name": "Sky Colours",
 		"desc": "Unlocks sky colour options in Settings.\nChoose from Default, Sunset, Night, Dawn, and Overcast skies.",
 		"cost": 2, "requires": ["parallax"], "branch": "graphics",
-		"tree_pos": Vector2(2.5, -7.5), "icon": "SK",
+		"icon": "SK",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -300,31 +492,31 @@ var SKILLS: Dictionary = {
 		"id": "enemies_basic", "name": "Basic Enemies",
 		"desc": "Frogs and kobolds start appearing in levels.",
 		"cost": 2, "requires": ["ui"], "branch": "enemies",
-		"tree_pos": Vector2(-1.5, -3.5), "icon": "BE",
+		"icon": "BE",
 	},
 	"enemy_sprites": {
 		"id": "enemy_sprites", "name": "Enemy Sprites",
 		"desc": "Enemies, spikes and smashers get their proper sprite art.",
 		"cost": 2, "requires": ["enemies_basic"], "branch": "enemies",
-		"tree_pos": Vector2(-3.5, -4.5), "icon": "ES",
+		"icon": "ES",
 	},
 	"enemies_more": {
 		"id": "enemies_more", "name": "More Enemies",
 		"desc": "Bats and big frogs join the party.",
 		"cost": 3, "requires": ["enemies_basic"], "branch": "enemies",
-		"tree_pos": Vector2(-2.0, -5.5), "icon": "ME",
+		"icon": "ME",
 	},
 	"enemies_advanced": {
 		"id": "enemies_advanced", "name": "Adv. Enemies",
 		"desc": "Bombs, shooters, drills and jumpers.",
 		"cost": 4, "requires": ["enemies_more"], "branch": "enemies",
-		"tree_pos": Vector2(-2.5, -7.5), "icon": "AE",
+		"icon": "AE",
 	},
 	"smashers": {
 		"id": "smashers", "name": "Smashers",
 		"desc": "Ceiling hammers that drop when you walk under them.",
 		"cost": 3, "requires": ["enemies_more"], "branch": "enemies",
-		"tree_pos": Vector2(-4.5, -6.5), "icon": "SM",
+		"icon": "SM",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -334,61 +526,61 @@ var SKILLS: Dictionary = {
 		"id": "procgen", "name": "Full Procedural",
 		"desc": "Unlocks the full library of level templates: stairs, elevated platforms, combos.\nWithout this you only run on flat ground.",
 		"cost": 4, "requires": ["ui"], "branch": "level",
-		"tree_pos": Vector2(7.5, -6.0), "icon": "PG",
+		"icon": "PG",
 	},
 	"coins": {
 		"id": "coins", "name": "Coins",
 		"desc": "Golden coins appear in levels. Collect them for bonus tokens.",
 		"cost": 3, "requires": ["procgen"], "branch": "level",
-		"tree_pos": Vector2(9.0, -7.0), "icon": "CO",
+		"icon": "CO",
 	},
 	"level_library": {
 		"id": "level_library", "name": "Level Library",
 		"desc": "Each run's seed is saved so you can replay favourites.\nUnlocks the Level Library in the main menu.\nFavourite levels are never evicted. Best distances are tracked per seed.",
 		"cost": 5, "requires": ["coins"], "branch": "level",
-		"tree_pos": Vector2(10.5, -8.5), "icon": "LL",
+		"icon": "LL",
 	},
 	"stats_menu": {
 		"id": "stats_menu", "name": "Stats Menu",
 		"desc": "Unlocks the Stats screen — playtime, jumps, longest run, longest combo, deaths, and more.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
-		"tree_pos": Vector2(-2.0, 3.5), "icon": "ST",
+		"icon": "ST",
 	},
 	"fast_mode": {
 		"id": "fast_mode", "name": "Fast Mode",
 		"desc": "Unlocks a toggle in Settings: run faster and earn more points per tile.",
 		"cost": 3, "requires": ["sprint"], "branch": "moves",
-		"tree_pos": Vector2(4.0, 2.0), "icon": "FM",
+		"icon": "FM",
 	},
 	"font_select": {
 		"id": "font_select", "name": "Font Select",
 		"desc": "Adds a font picker in Settings — cycles through all fonts in assets/fonts.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
-		"tree_pos": Vector2(-1.5, -2.0), "icon": "FT",
+		"icon": "FT",
 	},
 	"sprite_explosion": {
 		"id": "sprite_explosion", "name": "Sprite Explosions",
 		"desc": "Bombs use a frame-animation explosion instead of a particle poof.",
-		"cost": 2, "requires": ["enemies_advanced"], "branch": "enemies",
-		"tree_pos": Vector2(-1.5, -9.0), "icon": "SX",
+		"cost": 2, "requires": ["enemies_advanced", "particles"], "branch": "enemies",
+		"icon": "SX",
 	},
 	"daily_level": {
 		"id": "daily_level", "name": "Daily Level",
 		"desc": "Unlocks the Daily Level — one seed per calendar day, shared by everyone.",
 		"cost": 4, "requires": ["level_library"], "branch": "level",
-		"tree_pos": Vector2(11.5, -10.0), "icon": "DL",
+		"icon": "DL",
 	},
 	"home_polish": {
 		"id": "home_polish", "name": "Nicer Home",
 		"desc": "Redesigns the main menu with polished layout and animations.",
 		"cost": 3, "requires": ["main_menu_extras"], "branch": "ui",
-		"tree_pos": Vector2(-7.0, -3.5), "icon": "HP",
+		"icon": "HP",
 	},
 	"adaptive_sky": {
 		"id": "adaptive_sky", "name": "Adaptive Sky",
 		"desc": "Sky colour and palette shift over the course of a run.",
 		"cost": 3, "requires": ["sky_color"], "branch": "graphics",
-		"tree_pos": Vector2(2.5, -9.0), "icon": "AS",
+		"icon": "AS",
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -398,19 +590,31 @@ var SKILLS: Dictionary = {
 		"id": "combo_system", "name": "Combo System",
 		"desc": "Chained air-time & stomp combos build a token multiplier.\nA big xN pops on-screen while the streak is alive.",
 		"cost": 4, "requires": ["juice_squash"], "branch": "juice",
-		"tree_pos": Vector2(-8.5, 4.5), "icon": "CM",
+		"icon": "CM",
 	},
 	"combo_bounce": {
 		"id": "combo_bounce", "name": "Bouncy Combo Text",
 		"desc": "Combo popups spring in with a bouncy scale instead of a plain fade.",
-		"cost": 2, "requires": ["combo_system"], "branch": "juice",
-		"tree_pos": Vector2(-10.0, 5.5), "icon": "BT",
+		"cost": 2, "requires": ["combo_system", "main_menu_extras"], "branch": "juice",
+		"icon": "BT",
 	},
 	"skill_tree_polish": {
 		"id": "skill_tree_polish", "name": "Skill Tree Polish",
 		"desc": "Curved bezier connections, animated pulse on active paths.",
 		"cost": 2, "requires": ["main_menu_extras"], "branch": "ui",
-		"tree_pos": Vector2(-7.0, -1.5), "icon": "TP",
+		"icon": "TP",
+	},
+	"fog_cover": {
+		"id": "fog_cover", "name": "Fog Cover",
+		"desc": "A dark fog swallows the lower part of the screen — floors below fade into blackness.",
+		"cost": 3, "requires": ["vignette"], "branch": "shaders",
+		"icon": "FG",
+	},
+	"near_miss_slowmo": {
+		"id": "near_miss_slowmo", "name": "Near-Miss Slow-Mo",
+		"desc": "Brushing past an enemy triggers a brief cinematic slow-motion.\nFires 30% of the time.",
+		"cost": 3, "requires": ["impact_freeze"], "branch": "camera",
+		"icon": "NM",
 	},
 }
 

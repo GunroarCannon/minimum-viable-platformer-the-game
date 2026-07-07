@@ -42,11 +42,29 @@ func _ready() -> void:
 	_d_toggle_hint.visible = false
 	detail_vbox.add_child(_d_toggle_hint)
 
+	# The toggle & hint were created after UITheme.apply_current ran above, so
+	# re-apply so the switch icons + polished label colors reach them.
+	UITheme.apply_current(_d_toggle)
+	UITheme.apply_current(_d_toggle_hint)
+
 	# Description label needs to wrap inside the narrow detail panel.
 	d_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d_desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	d_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	# Force dark ink on all detail-panel labels so the description never renders
+	# with a light theme fallback (the placeholder theme paints Labels white).
+	var ink := Color(0.15, 0.10, 0.06)
+	for lbl in [d_name, d_desc, d_cost, d_status, d_branch]:
+		lbl.add_theme_color_override("font_color", ink)
+		lbl.add_theme_color_override("font_outline_color", Color(1.0, 0.95, 0.82))
+		lbl.add_theme_constant_override("outline_size", 3)
+	# Bump descriptor/status size a touch so it isn't a footnote.
+	d_desc.add_theme_font_size_override("font_size", 20)
+	d_status.add_theme_font_size_override("font_size", 20)
+	d_cost.add_theme_font_size_override("font_size", 20)
+	d_branch.add_theme_font_size_override("font_size", 18)
 
 	_refresh()
 	# Select root by default so the detail panel isn't empty.

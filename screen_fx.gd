@@ -24,6 +24,7 @@ func _ready() -> void:
 	layer = 90
 	_add_pass("color_grading",        preload("res://shaders/color_grading.gdshader"))
 	_add_pass("chromatic_aberration", preload("res://shaders/chromatic.gdshader"))
+	_add_pass("fog_cover",            preload("res://shaders/fog_cover.gdshader"))
 	_add_pass("vignette",             preload("res://shaders/vignette.gdshader"))
 	# Skip screen-sampling shaders on lightweight targets (web + mobile) — they
 	# tank the frame rate and don't compose well with the GL Compat renderer's

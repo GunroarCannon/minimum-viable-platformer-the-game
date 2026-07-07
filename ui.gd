@@ -44,6 +44,12 @@ func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 	else:
 		_configure_pre_ui(tokens_awarded)
 
+	# Bump the smaller labels so they stay readable on tight/mobile viewports.
+	# The .tscn defaults are low (~14-18px); force overrides here.
+	tokens_earned_label.add_theme_font_size_override("font_size", 32)
+	hint_label.add_theme_font_size_override("font_size", 22)
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
 	_update_cause_label()
 
 	# Show seed info when library is unlocked.
@@ -61,7 +67,7 @@ func _update_cause_label() -> void:
 	if _cause_label == null:
 		_cause_label = Label.new()
 		_cause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_cause_label.add_theme_font_size_override("font_size", 18)
+		_cause_label.add_theme_font_size_override("font_size", 24)
 		box.add_child(_cause_label)
 		# Sit just under the title (index 0).
 		box.move_child(_cause_label, 1)
@@ -79,7 +85,7 @@ func _update_library_widgets() -> void:
 	if _seed_label == null:
 		_seed_label = Label.new()
 		_seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_seed_label.add_theme_font_size_override("font_size", 16)
+		_seed_label.add_theme_font_size_override("font_size", 22)
 		box.add_child(_seed_label)
 		box.move_child(_seed_label, box.get_child_count() - 2)  # before Buttons
 
@@ -98,7 +104,7 @@ func _update_library_widgets() -> void:
 	if _highscore_lbl == null:
 		_highscore_lbl = Label.new()
 		_highscore_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_highscore_lbl.add_theme_font_size_override("font_size", 18)
+		_highscore_lbl.add_theme_font_size_override("font_size", 22)
 		buttons_box.add_child(_highscore_lbl)
 		buttons_box.move_child(_highscore_lbl, 1)
 	var best := _best_for_current_seed()
