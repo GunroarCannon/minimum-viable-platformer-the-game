@@ -292,6 +292,7 @@ func generate_level() -> void:
 	print(current_seed)
 	Global.current_run_seed = current_seed
 	Global.stat_bucket("seeds_visited", str(current_seed), 1)
+	Global.reset_run_state()
 
 	# Adaptive sky/palette drift (no-op unless "adaptive_sky" is unlocked).
 	var adaptive := Node.new()

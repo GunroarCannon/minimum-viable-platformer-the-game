@@ -74,25 +74,29 @@ func _refresh_labels() -> void:
 
 
 func _promote_to_topbar() -> void:
-	# Replace the big Settings row with a small ⚙ icon-button in the top bar,
+	# Replace the big Settings row with a proper cog icon-button in the top bar,
 	# and Exit with a × icon. Frees up ~130 px in the button stack.
 	var topbar := $Root/TopBar
 
 	var gear := Button.new()
-	gear.text = "⚙"
 	gear.tooltip_text = "Settings"
-	gear.custom_minimum_size = Vector2(52, 52)
+	gear.custom_minimum_size = Vector2(64, 64)
 	gear.flat = true
-	gear.add_theme_font_size_override("font_size", 28)
 	gear.pressed.connect(_on_settings)
 	topbar.add_child(gear)
+	# Overlay a drawn cog polygon so the icon scales cleanly and doesn't rely
+	# on emoji font rendering.
+	var cog := Control.new()
+	cog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	cog.set_script(preload("res://cog_icon.gd"))
+	gear.add_child(cog)
 
 	var quit_btn := Button.new()
 	quit_btn.text = "×"
 	quit_btn.tooltip_text = "Quit"
-	quit_btn.custom_minimum_size = Vector2(52, 52)
+	quit_btn.custom_minimum_size = Vector2(64, 64)
 	quit_btn.flat = true
-	quit_btn.add_theme_font_size_override("font_size", 32)
+	quit_btn.add_theme_font_size_override("font_size", 40)
 	quit_btn.pressed.connect(_on_exit)
 	topbar.add_child(quit_btn)
 

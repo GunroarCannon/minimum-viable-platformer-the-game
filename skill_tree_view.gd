@@ -5,12 +5,15 @@ extends Control
 signal skill_selected(skill_id: String)
 signal skill_purchased(skill_id: String)
 
-const NODE_RADIUS := 36.0
-const GRID_SCALE  := Vector2(130.0, 110.0)
+const BASE_NODE_RADIUS := 36.0
+const BASE_GRID_SCALE  := Vector2(130.0, 110.0)
+const MIN_ZOOM := 0.35
+const MAX_ZOOM := 1.8
 
 @export var pan_speed_keyboard: float = 480.0
 
 var _camera_offset: Vector2 = Vector2.ZERO
+var _zoom: float = 1.0
 var _panning: bool = false
 var _pressed_inside: bool = false
 var _press_pos: Vector2
@@ -21,13 +24,23 @@ var _hover_id: String = ""
 var _selected_id: String = ""
 const DRAG_THRESHOLD := 6.0
 
+# Two-finger pinch tracking.
+var _touch_points: Dictionary = {}   # index -> Vector2
+var _pinch_start_dist: float = 0.0
+var _pinch_start_zoom: float = 1.0
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	# Centre the view on the root skill on first show.
 	_centre_on_root.call_deferred()
 
 func _centre_on_root() -> void:
 	_camera_offset = size * 0.5
+
+func _grid_scale() -> Vector2:
+	return BASE_GRID_SCALE * _zoom
+
+func _node_radius() -> float:
+	return BASE_NODE_RADIUS * _zoom
 
 func _process(delta: float) -> void:
 	var pan = Vector2.ZERO
@@ -42,10 +55,33 @@ func _process(delta: float) -> void:
 func _world_pos(skill_id: String) -> Vector2:
 	var d = SkillsDB.SKILLS[skill_id]
 	var p: Vector2 = d["tree_pos"]
-	return _camera_offset + p * GRID_SCALE
+	return _camera_offset + p * _grid_scale()
+
+## True if the node should be drawn / hit-testable right now.
+## Rule: ROOT always visible. Otherwise at least one direct parent must be
+## purchased. This hides deep branches until the immediately-upstream node
+## is bought.
+func _is_revealed(sid: String) -> bool:
+	if Global.debug_toggles.get("unlock_all", false): return true
+	if sid == SkillsDB.ROOT_ID: return true
+	if SkillsDB.is_purchased(sid): return true
+	var d = SkillsDB.SKILLS.get(sid, null)
+	if d == null: return false
+	for r in d.get("requires", []):
+		if SkillsDB.is_purchased(r):
+			return true
+	return false
+
+func _zoom_around(new_zoom: float, focus: Vector2) -> void:
+	new_zoom = clamp(new_zoom, MIN_ZOOM, MAX_ZOOM)
+	if is_equal_approx(new_zoom, _zoom): return
+	# Keep the point under focus stationary in local space.
+	var world = (focus - _camera_offset) / _zoom
+	_zoom = new_zoom
+	_camera_offset = focus - world * _zoom
+	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
-	# ─── MOUSE ─────────────────────────────────────────────────────────
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_MIDDLE:
 			if event.pressed:
@@ -56,7 +92,6 @@ func _gui_input(event: InputEvent) -> void:
 				_moved_since_press = false
 				_press_hit_id = _hit_test(event.position)
 			else:
-				# Release: if mouse didn't move much, treat as a click.
 				if _pressed_inside and not _moved_since_press and _press_hit_id != "":
 					_selected_id = _press_hit_id
 					emit_signal("skill_selected", _press_hit_id)
@@ -66,21 +101,15 @@ func _gui_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			if event.shift_pressed:
 				_camera_offset.x += 80
+				queue_redraw()
 			else:
-				_camera_offset.y += 80
-			queue_redraw()
+				_zoom_around(_zoom * 1.12, event.position)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			if event.shift_pressed:
 				_camera_offset.x -= 80
+				queue_redraw()
 			else:
-				_camera_offset.y -= 80
-			queue_redraw()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_LEFT and event.pressed:
-			_camera_offset.x += 80
-			queue_redraw()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_RIGHT and event.pressed:
-			_camera_offset.x -= 80
-			queue_redraw()
+				_zoom_around(_zoom / 1.12, event.position)
 	elif event is InputEventMouseMotion:
 		if _panning:
 			var delta = event.position - _press_pos
@@ -93,24 +122,44 @@ func _gui_input(event: InputEvent) -> void:
 		_hover_id = _hit_test(event.position)
 		if prev_hover != _hover_id:
 			queue_redraw()
-	# ─── TOUCH ─────────────────────────────────────────────────────────
 	elif event is InputEventScreenTouch:
 		if event.pressed:
-			_pressed_inside = true
-			_panning = true
-			_press_pos = event.position
-			_drag_start_offset = _camera_offset
-			_moved_since_press = false
-			_press_hit_id = _hit_test(event.position)
+			_touch_points[event.index] = event.position
+			if _touch_points.size() == 1:
+				_pressed_inside = true
+				_panning = true
+				_press_pos = event.position
+				_drag_start_offset = _camera_offset
+				_moved_since_press = false
+				_press_hit_id = _hit_test(event.position)
+			elif _touch_points.size() == 2:
+				# Enter pinch mode, cancel any pending tap.
+				_panning = false
+				_press_hit_id = ""
+				var pts = _touch_points.values()
+				_pinch_start_dist = max(1.0, pts[0].distance_to(pts[1]))
+				_pinch_start_zoom = _zoom
 		else:
-			if _pressed_inside and not _moved_since_press and _press_hit_id != "":
-				_selected_id = _press_hit_id
-				emit_signal("skill_selected", _press_hit_id)
-			_pressed_inside = false
-			_panning = false
-			queue_redraw()
+			if _touch_points.has(event.index):
+				_touch_points.erase(event.index)
+			if _touch_points.size() < 2:
+				_pinch_start_dist = 0.0
+			if _touch_points.size() == 0:
+				if _pressed_inside and not _moved_since_press and _press_hit_id != "":
+					_selected_id = _press_hit_id
+					emit_signal("skill_selected", _press_hit_id)
+				_pressed_inside = false
+				_panning = false
+				queue_redraw()
 	elif event is InputEventScreenDrag:
-		if _panning:
+		if _touch_points.has(event.index):
+			_touch_points[event.index] = event.position
+		if _touch_points.size() >= 2 and _pinch_start_dist > 0.0:
+			var pts = _touch_points.values()
+			var dist = max(1.0, pts[0].distance_to(pts[1]))
+			var mid = (pts[0] + pts[1]) * 0.5
+			_zoom_around(_pinch_start_zoom * (dist / _pinch_start_dist), mid)
+		elif _panning:
 			var delta = event.position - _press_pos
 			if not _moved_since_press and delta.length() > DRAG_THRESHOLD:
 				_moved_since_press = true
@@ -119,9 +168,11 @@ func _gui_input(event: InputEvent) -> void:
 				queue_redraw()
 
 func _hit_test(local_pos: Vector2) -> String:
+	var r = _node_radius() + 2
 	for sid in SkillsDB.SKILLS.keys():
+		if not _is_revealed(sid): continue
 		var wp = _world_pos(sid)
-		if local_pos.distance_to(wp) <= NODE_RADIUS + 2:
+		if local_pos.distance_to(wp) <= r:
 			return sid
 	return ""
 
@@ -133,15 +184,20 @@ func selected_id() -> String:
 	return _selected_id
 
 func _draw() -> void:
-	# Background grid for navigability
 	_draw_grid()
 
-	# Edges first (under nodes)
+	var polished := Global.is_unlocked("skill_tree_polish") or Global.is_unlocked("main_menu_extras")
+	var phase = Time.get_ticks_msec() * 0.001
+
+	# Edges first (under nodes). Only draw edges whose destination is revealed
+	# so unrevealed branches don't leak visual info.
 	for sid in SkillsDB.SKILLS.keys():
+		if not _is_revealed(sid): continue
 		var d = SkillsDB.SKILLS[sid]
 		var to_p = _world_pos(sid)
 		for r in d.get("requires", []):
 			if not SkillsDB.SKILLS.has(r): continue
+			if not _is_revealed(r): continue
 			var from_p = _world_pos(r)
 			var purchased_to = SkillsDB.is_purchased(sid)
 			var purchased_from = SkillsDB.is_purchased(r)
@@ -151,29 +207,68 @@ func _draw() -> void:
 				col = Color(0.95, 0.78, 0.30); w = 6.0
 			elif purchased_from:
 				col = Color(0.55, 0.50, 0.40, 0.95); w = 5.0
-			draw_line(from_p, to_p, col, w, true)
+			if polished:
+				_draw_curved_edge(from_p, to_p, col, w, purchased_from and purchased_to, phase)
+			else:
+				draw_line(from_p, to_p, col, w, true)
 
 	# Nodes
 	for sid in SkillsDB.SKILLS.keys():
+		if not _is_revealed(sid): continue
 		_draw_node(sid)
 
-	# Navigation hint pill
-	_draw_hint()
+	# "There is more" ghost pips at the far end of edges going to hidden nodes.
+	for sid in SkillsDB.SKILLS.keys():
+		if not _is_revealed(sid): continue
+		var d = SkillsDB.SKILLS[sid]
+		if not SkillsDB.is_purchased(sid): continue
+		for other in SkillsDB.SKILLS.keys():
+			if _is_revealed(other): continue
+			var od = SkillsDB.SKILLS[other]
+			if not od.get("requires", []).has(sid): continue
+			var from_p = _world_pos(sid)
+			var to_p = _world_pos(other)
+			var dir = (to_p - from_p).normalized()
+			var pip_pos = from_p + dir * (_node_radius() + 22.0)
+			draw_circle(pip_pos, 6.0 * _zoom, Color(0.55, 0.50, 0.40, 0.75))
+			var font = ThemeDB.fallback_font
+			var fs = int(13 * _zoom)
+			draw_string(font, pip_pos + Vector2(-5, 5) * _zoom, "?",
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.15, 0.10, 0.05))
 
-func _draw_hint() -> void:
-	var font = ThemeDB.fallback_font
-	var fs := 13
-	var hint := "drag to pan  ·  wheel to scroll  ·  shift+wheel = horizontal  ·  WASD pans  ·  click a node"
-	var ts = font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-	var pad = Vector2(10, 6)
-	var rect = Rect2(Vector2(12, 12), Vector2(ts.x + pad.x * 2, ts.y + pad.y * 2))
-	draw_rect(rect, Color(0.10, 0.10, 0.12, 0.75), true)
-	draw_rect(rect, Color(0.95, 0.78, 0.30, 0.5), false, 1.0)
-	draw_string(font, Vector2(rect.position.x + pad.x, rect.position.y + pad.y + ts.y * 0.85),
-		hint, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.98, 0.90, 0.75))
+func _draw_curved_edge(from_p: Vector2, to_p: Vector2, col: Color, w: float, animated: bool, phase: float) -> void:
+	# Cubic bezier with control points offset perpendicular to the segment.
+	var seg = to_p - from_p
+	var perp = Vector2(-seg.y, seg.x).normalized()
+	var bend = min(seg.length() * 0.18, 60.0)
+	var c1 = from_p + seg * 0.33 + perp * bend
+	var c2 = from_p + seg * 0.66 + perp * bend
+	var pts: PackedVector2Array = PackedVector2Array()
+	var steps := 22
+	for i in range(steps + 1):
+		var t = float(i) / float(steps)
+		var it = 1.0 - t
+		var p = it*it*it*from_p + 3.0*it*it*t*c1 + 3.0*it*t*t*c2 + t*t*t*to_p
+		pts.append(p)
+	# Glow underlay.
+	var glow = col
+	glow.a *= 0.25
+	draw_polyline(pts, glow, w + 6.0, true)
+	# Main stroke.
+	draw_polyline(pts, col, w, true)
+	# Animated dashed pulse on active edges.
+	if animated:
+		var dash_col = Color(1, 1, 1, 0.65)
+		var count = pts.size() - 1
+		for i in range(count):
+			var t = float(i) / float(count)
+			var v = fmod(t + phase * 0.35, 1.0)
+			if v < 0.12:
+				draw_line(pts[i], pts[i + 1], dash_col, w * 0.55, true)
 
 func _draw_grid() -> void:
-	var step = 60.0
+	var step = 60.0 * _zoom
+	if step < 20.0: step = 20.0
 	var col = Color(0, 0, 0, 0.06)
 	var sz = size
 	var ox = fposmod(_camera_offset.x, step)
@@ -190,26 +285,17 @@ func _draw_grid() -> void:
 func _draw_node(sid: String) -> void:
 	var d = SkillsDB.SKILLS[sid]
 	var p = _world_pos(sid)
-	if p.x < -120 or p.x > size.x + 120 or p.y < -120 or p.y > size.y + 120:
+	if p.x < -160 or p.x > size.x + 160 or p.y < -160 or p.y > size.y + 160:
 		return
 	var branch_col: Color = SkillsDB.get_branch_color(d.get("branch", "ui"))
 	var purchased := SkillsDB.is_purchased(sid)
 	var prereq := SkillsDB.prereqs_met(sid)
 	var affordable := SkillsDB.can_afford(sid)
 
-	# Distance-based fade when Menu Polish is on: nodes far from screen centre
-	# fade towards 0.35 alpha, so the eye is pulled to the middle of the tree.
 	var alpha := 1.0
 	var polished := Global.is_unlocked("main_menu_extras")
-	if polished:
-		var screen_center := size * 0.5
-		var dist := p.distance_to(screen_center)
-		var fade_start = min(size.x, size.y) * 0.28
-		var fade_full  = min(size.x, size.y) * 0.55
-		if dist > fade_start:
-			alpha = 1.0 - clamp((dist - fade_start) / max(1.0, fade_full - fade_start), 0.0, 0.65)
 
-	var r := NODE_RADIUS
+	var r := _node_radius()
 	if sid == _hover_id: r += 4
 	if sid == _selected_id: r += 2
 
@@ -230,7 +316,6 @@ func _draw_node(sid: String) -> void:
 	bg.a *= alpha
 	draw_circle(p, r, bg)
 
-	# Polished node bling — inner highlight ring + gradient dot.
 	if polished:
 		draw_circle(p - Vector2(r * 0.35, r * 0.4), r * 0.32, Color(1, 1, 1, 0.35 * alpha))
 		draw_arc(p, r * 0.72, 0.0, TAU, 40, Color(1, 1, 1, 0.35 * alpha), 2.0, true)
@@ -240,21 +325,19 @@ func _draw_node(sid: String) -> void:
 	if sid == _selected_id: ring_col = Color(1, 1, 1, alpha)
 	draw_arc(p, r, 0.0, TAU, 64, ring_col, 3.5, true)
 
-	# Icon label (2-letter ASCII)
+	# Icon label — always dark ink so it stays readable on selected/light backgrounds.
 	var icon: String = d.get("icon", "?")
 	var font = ThemeDB.fallback_font
-	var fs := 16
+	var fs := int(16 * _zoom)
 	var ts = font.get_string_size(icon, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
-	var icon_col := ring_col
-	icon_col.a = alpha
+	var icon_col := Color(0.12, 0.08, 0.06, alpha)
 	draw_string(font, p - ts * 0.5 + Vector2(0, ts.y * 0.40), icon,
 		HORIZONTAL_ALIGNMENT_CENTER, -1, fs, icon_col)
 
 	# Label below
 	var name_str: String = d.get("name", sid)
-	var lfs := 16
+	var lfs := int(16 * _zoom)
 	var lts = font.get_string_size(name_str, HORIZONTAL_ALIGNMENT_CENTER, -1, lfs)
-	# Cream pill behind label for readability
 	var pad := Vector2(8, 4)
 	var rect = Rect2(p + Vector2(-lts.x * 0.5 - pad.x, r + 8 - pad.y),
 					 Vector2(lts.x + pad.x * 2, lts.y + pad.y * 2))
@@ -267,7 +350,7 @@ func _draw_node(sid: String) -> void:
 	if not purchased:
 		var cost = SkillsDB.compute_cost(sid)
 		var cs := "%d ★" % cost
-		var cfs := 14
+		var cfs := int(14 * _zoom)
 		var cts = font.get_string_size(cs, HORIZONTAL_ALIGNMENT_CENTER, -1, cfs)
 		var crect = Rect2(p + Vector2(-cts.x * 0.5 - 6, -r - cts.y - 12),
 						  Vector2(cts.x + 12, cts.y + 6))

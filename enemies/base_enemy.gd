@@ -3,6 +3,9 @@ class_name BaseEnemy
 
 @export var can_be_stomped: bool = true
 @export var gravity_scale: float = 1.0
+## Bonus multiplier added to the combo when stomped. 0 = plain enemy, 2 = bouncy,
+## 10 = super-bouncy trampoline enemy. Subclasses override in _ready().
+@export var combo_bonus: int = 0
 
 ## ── Tear-death configuration ───────────────────────────────────────────────
 ## Set these in each subclass _ready() to match the entity's visual size and colour.

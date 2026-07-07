@@ -194,7 +194,7 @@ func _on_foot_sensor_area_entered(area: Area2D) -> void:
 		if enemy and enemy.has_method("stomp_by"):
 			enemy.stomp_by(self)
 			_kick_impact_juice()
-			ComboSystem.notify_stomp(global_position)
+			ComboSystem.notify_stomp(global_position, int(enemy.get("combo_bonus") if enemy.get("combo_bonus") != null else 0))
 			Global.stat_add("enemies_stomped", 1)
 
 func _on_foot_sensor_body_entered(body: Node) -> void:
@@ -202,7 +202,7 @@ func _on_foot_sensor_body_entered(body: Node) -> void:
 	if velocity.y > 50 and body.has_method("stomp_by"):
 		body.stomp_by(self)
 		_kick_impact_juice()
-		ComboSystem.notify_stomp(global_position)
+		ComboSystem.notify_stomp(global_position, int(body.get("combo_bonus") if body.get("combo_bonus") != null else 0))
 		Global.stat_add("enemies_stomped", 1)
 
 # Brief slow-mo + chromatic kick on stomp. No-op if either unlock is off.

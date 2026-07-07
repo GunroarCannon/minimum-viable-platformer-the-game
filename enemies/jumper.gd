@@ -12,6 +12,7 @@ func _ready() -> void:
 	super._ready()
 	tear_size  = Vector2(64, 64)
 	tear_color = Color(0.9, 0.2, 0.9)  # Bright Purple
+	combo_bonus = 2  # bouncy stomp — big combo kick
 	var coll = $CollisionShape2D
 	if coll and coll.shape is RectangleShape2D:
 		coll.shape.size = Vector2(64, 64)

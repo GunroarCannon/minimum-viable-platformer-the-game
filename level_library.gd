@@ -1,9 +1,16 @@
 extends CanvasLayer
 
-## Level Library screen — shows all saved run seeds so the player can
-## replay favourites, view best distances, or jump into a fresh run.
+## Level Library screen — tabbed browser of saved seeds.
 
-var _vbox: VBoxContainer = null
+const TAB_RECENT := 0
+const TAB_FAV := 1
+const TAB_COMMUNITY := 2
+
+var _tabs: TabContainer = null
+var _recent_vbox: VBoxContainer = null
+var _fav_vbox: VBoxContainer = null
+var _community_vbox: VBoxContainer = null
+var _toast: Label = null
 
 func _ready() -> void:
 	layer = 50
@@ -16,13 +23,11 @@ func _build_ui() -> void:
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(root)
 
-	# Background fill
 	var bg := ColorRect.new()
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0.10, 0.08, 0.06, 0.97)
 	root.add_child(bg)
 
-	# Top bar
 	var topbar := HBoxContainer.new()
 	topbar.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	topbar.custom_minimum_size = Vector2(0, 72)
@@ -48,24 +53,14 @@ func _build_ui() -> void:
 	spacer.custom_minimum_size = Vector2(120, 0)
 	topbar.add_child(spacer)
 
-	# Scroll container for entries
-	var scroll := ScrollContainer.new()
-	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	scroll.offset_top    = 84
-	scroll.offset_left   = 32
-	scroll.offset_right  = -32
-	scroll.offset_bottom = -16
-	root.add_child(scroll)
-
-	_vbox = VBoxContainer.new()
-	_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_vbox.add_theme_constant_override("separation", 10)
-	scroll.add_child(_vbox)
-
-	# Seed entry row so players can jump into a code shared by a friend.
+	# Seed entry row — persistent above the tabs.
 	var entry_panel := PanelContainer.new()
-	entry_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_vbox.add_child(entry_panel)
+	entry_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	entry_panel.offset_top    = 88
+	entry_panel.offset_left   = 32
+	entry_panel.offset_right  = -32
+	entry_panel.custom_minimum_size = Vector2(0, 60)
+	root.add_child(entry_panel)
 	var entry_hbox := HBoxContainer.new()
 	entry_hbox.add_theme_constant_override("separation", 12)
 	entry_panel.add_child(entry_hbox)
@@ -88,46 +83,109 @@ func _build_ui() -> void:
 		if s > 0:
 			_on_replay(s))
 	entry_hbox.add_child(go_btn)
+	var copy_current_btn := Button.new()
+	copy_current_btn.text = "Copy Entered"
+	copy_current_btn.custom_minimum_size = Vector2(140, 44)
+	copy_current_btn.pressed.connect(func():
+		if line_edit.text.length() > 0:
+			DisplayServer.clipboard_set(line_edit.text)
+			_show_toast("Copied!"))
+	entry_hbox.add_child(copy_current_btn)
+
+	# Tab container fills the rest.
+	_tabs = TabContainer.new()
+	_tabs.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_tabs.offset_top    = 156
+	_tabs.offset_left   = 32
+	_tabs.offset_right  = -32
+	_tabs.offset_bottom = -16
+	root.add_child(_tabs)
+
+	_recent_vbox = _make_tab("Recent Plays")
+	_fav_vbox = _make_tab("Favourites")
+	_community_vbox = _make_tab("Community")
+
+	# Community placeholder content.
+	var placeholder := Label.new()
+	placeholder.text = "Community favourites coming soon."
+	placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	placeholder.add_theme_font_size_override("font_size", 22)
+	_community_vbox.add_child(placeholder)
+
+	# Toast label (bottom-centre).
+	_toast = Label.new()
+	_toast.text = ""
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.add_theme_font_size_override("font_size", 22)
+	_toast.add_theme_color_override("font_color", Color(1.0, 0.85, 0.20))
+	_toast.add_theme_color_override("font_outline_color", Color(0.05, 0.02, 0.08))
+	_toast.add_theme_constant_override("outline_size", 6)
+	_toast.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_toast.offset_top = 40
+	_toast.modulate.a = 0.0
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(_toast)
+
+func _make_tab(tab_name: String) -> VBoxContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = tab_name
+	_tabs.add_child(scroll)
+	var vbox := VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_theme_constant_override("separation", 10)
+	scroll.add_child(vbox)
+	return vbox
 
 func _refresh() -> void:
-	for c in _vbox.get_children():
-		c.queue_free()
+	for vb in [_recent_vbox, _fav_vbox]:
+		for c in vb.get_children():
+			c.queue_free()
 
 	var entries: Array = Global.level_library.duplicate(true)
-	if entries.is_empty():
-		var lbl := Label.new()
-		lbl.text = "No levels saved yet.\nPlay some runs to build your library!"
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 24)
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_vbox.add_child(lbl)
-		return
 
-	# Favourites first, then sort by distance descending.
-	entries.sort_custom(func(a, b) -> bool:
-		var af: bool = a.get("favorite", false)
-		var bf: bool = b.get("favorite", false)
-		if af != bf: return af
-		return int(a.get("distance", 0)) > int(b.get("distance", 0))
-	)
+	# Recent = sorted by insertion (last-added first).
+	var recent = entries.duplicate(true)
+	recent.reverse()
 
-	for entry in entries:
-		_add_row(entry)
+	# Favourites subset.
+	var favs = entries.filter(func(e): return bool(e.get("favorite", false)))
+	favs.sort_custom(func(a, b) -> bool:
+		return int(a.get("distance", 0)) > int(b.get("distance", 0)))
 
-func _add_row(entry: Dictionary) -> void:
+	if recent.is_empty():
+		_recent_vbox.add_child(_empty_label("No levels played yet.\nJump in!"))
+	else:
+		for e in recent:
+			_add_row(_recent_vbox, e)
+
+	if favs.is_empty():
+		_fav_vbox.add_child(_empty_label("No favourites yet.\nTap ☆ on a level to save it."))
+	else:
+		for e in favs:
+			_add_row(_fav_vbox, e)
+
+func _empty_label(text: String) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	return lbl
+
+func _add_row(vbox: VBoxContainer, entry: Dictionary) -> void:
 	var seed_val := int(entry.get("seed", 0))
 	var dist     := int(entry.get("distance", 0))
+	var score    := int(entry.get("best_score", 0))
 	var fav      := bool(entry.get("favorite", false))
 
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_vbox.add_child(panel)
+	vbox.add_child(panel)
 
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 18)
 	panel.add_child(hbox)
 
-	# Favourite toggle
 	var fav_btn := Button.new()
 	fav_btn.text = "★" if fav else "☆"
 	fav_btn.custom_minimum_size = Vector2(52, 52)
@@ -136,7 +194,6 @@ func _add_row(entry: Dictionary) -> void:
 	fav_btn.pressed.connect(_on_favorite.bind(seed_val))
 	hbox.add_child(fav_btn)
 
-	# Info column
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.add_child(info)
@@ -146,17 +203,36 @@ func _add_row(entry: Dictionary) -> void:
 	seed_lbl.add_theme_font_size_override("font_size", 20)
 	info.add_child(seed_lbl)
 
-	var dist_lbl := Label.new()
-	dist_lbl.text = "Best:  %d m" % dist
-	dist_lbl.add_theme_font_size_override("font_size", 16)
-	info.add_child(dist_lbl)
+	var stat_lbl := Label.new()
+	if score > 0:
+		stat_lbl.text = "Best:  %d m  ·  Score:  %d" % [dist, score]
+	else:
+		stat_lbl.text = "Best:  %d m" % dist
+	stat_lbl.add_theme_font_size_override("font_size", 16)
+	info.add_child(stat_lbl)
 
-	# Replay button
+	var copy_btn := Button.new()
+	copy_btn.text = "Copy"
+	copy_btn.custom_minimum_size = Vector2(90, 52)
+	copy_btn.pressed.connect(func():
+		DisplayServer.clipboard_set(Global.seed_to_code(seed_val))
+		_show_toast("Copied!"))
+	hbox.add_child(copy_btn)
+
 	var replay_btn := Button.new()
 	replay_btn.text = "► Replay"
 	replay_btn.custom_minimum_size = Vector2(120, 52)
 	replay_btn.pressed.connect(_on_replay.bind(seed_val))
 	hbox.add_child(replay_btn)
+
+func _show_toast(text: String) -> void:
+	if _toast == null: return
+	_toast.text = text
+	_toast.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(_toast, "modulate:a", 1.0, 0.15)
+	tw.tween_interval(0.9)
+	tw.tween_property(_toast, "modulate:a", 0.0, 0.35)
 
 func _on_favorite(seed_val: int) -> void:
 	for entry in Global.level_library:

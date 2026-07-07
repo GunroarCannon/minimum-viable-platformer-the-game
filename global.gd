@@ -55,6 +55,15 @@ var first_death_done: bool = false
 ## Best distance ever (in tile-units).
 var best_distance: int = 0
 
+## Score for the current run — accumulates tokens*mult + stomp bonuses.
+var current_run_score: int = 0
+
+## Best score ever recorded, across every level.
+var best_score_ever: int = 0
+
+## Best score for the currently-playing seed (if any).
+var current_seed_best_score: int = 0
+
 ## Tracks last awarded distance so we don't double-award mid-run.
 var last_run_distance: int = 0
 
@@ -184,6 +193,7 @@ func save_state() -> void:
 		"feature_overrides": feature_overrides,
 		"first_death_done": first_death_done,
 		"best_distance": best_distance,
+		"best_score_ever": best_score_ever,
 		"settings_cfg": settings_cfg,
 		"level_library": level_library,
 		"color_palette": color_palette,
@@ -205,6 +215,7 @@ func load_state() -> void:
 	feature_overrides = blob.get("feature_overrides", {})
 	first_death_done = bool(blob.get("first_death_done", false))
 	best_distance = int(blob.get("best_distance", 0))
+	best_score_ever = int(blob.get("best_score_ever", 0))
 	for k in blob.get("settings_cfg", {}).keys():
 		settings_cfg[k] = blob["settings_cfg"][k]
 	level_library = blob.get("level_library", [])
@@ -274,9 +285,37 @@ func spend(n: int) -> bool:
 
 func add_tokens(n: int) -> void:
 	if n <= 0: return
-	tokens += n
-	stat_add("total_points_earned", n)
+	# ComboSystem scales token earning while a combo is live.
+	var mult := 1
+	var cs = get_node_or_null("/root/ComboSystem")
+	if cs and cs.has_method("token_multiplier"):
+		mult = int(cs.token_multiplier())
+	var earned := n * mult
+	tokens += earned
+	stat_add("total_points_earned", earned)
+	add_run_score(earned)
 	save_state()
+
+## Adds to the current-run score. Called by ComboSystem when tokens are earned
+## and by stomp-bonus paths. Does not persist until run-end.
+func add_run_score(n: int) -> void:
+	if n <= 0: return
+	current_run_score += n
+
+## Look up the stored best score for a given seed from the level library.
+func best_score_for_seed(seed_val: int) -> int:
+	for entry in level_library:
+		if int(entry.get("seed", 0)) == seed_val:
+			return int(entry.get("best_score", 0))
+	return 0
+
+## Reset per-run counters. Call at level start.
+func reset_run_state() -> void:
+	current_run_score = 0
+	current_seed_best_score = best_score_for_seed(current_run_seed)
+	var cs = get_node_or_null("/root/ComboSystem")
+	if cs and cs.has_method("reset"):
+		cs.reset()
 
 ## Convenience for clearing all progress (used in settings reset).
 func reset_progress() -> void:
@@ -328,6 +367,9 @@ func add_to_library(seed_val: int, distance_m: int) -> void:
 ## Called by player.die().
 ## Returns the number of tokens awarded this death (for UI display).
 func on_player_death(distance_tiles: int) -> int:
+	var cs = get_node_or_null("/root/ComboSystem")
+	if cs and cs.has_method("reset"):
+		cs.reset()
 	var awarded := 0
 	if distance_tiles > 0:
 		awarded = max(1, distance_tiles / TOKEN_PER_TILES)
@@ -346,8 +388,19 @@ func on_player_death(distance_tiles: int) -> int:
 		is_daily_run = false
 	last_run_distance = distance_tiles
 	add_to_library(current_run_seed, distance_tiles)
+	if current_run_score > best_score_ever:
+		best_score_ever = current_run_score
+	_update_library_best_score(current_run_seed, current_run_score)
 	save_state()
 	return awarded
+
+func _update_library_best_score(seed_val: int, score: int) -> void:
+	if seed_val == 0 or score <= 0: return
+	for entry in level_library:
+		if int(entry.get("seed", 0)) == seed_val:
+			if score > int(entry.get("best_score", 0)):
+				entry["best_score"] = score
+			return
 
 
 ## ─── INPUT MAP ─────────────────────────────────────────────────────────

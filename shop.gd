@@ -22,7 +22,7 @@ func _ready() -> void:
 	d_buy.pressed.connect(_on_buy)
 	tree_view.skill_selected.connect(_on_skill_selected)
 	UITheme.apply_current(self)
-	_build_legend()
+	legend.visible = false
 
 	# Create the active-toggle checkbox and append it to the detail VBox.
 	var detail_vbox = $Root/Body/Detail/Scroll/V
@@ -56,22 +56,6 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):
 		_on_back()
-
-func _build_legend() -> void:
-	for c in legend.get_children(): c.queue_free()
-	for branch in SkillsDB.BRANCH_NAMES.keys():
-		var item = HBoxContainer.new()
-		item.add_theme_constant_override("separation", 6)
-		var swatch = ColorRect.new()
-		swatch.color = SkillsDB.get_branch_color(branch)
-		swatch.custom_minimum_size = Vector2(18, 18)
-		item.add_child(swatch)
-		var lab = Label.new()
-		lab.text = SkillsDB.BRANCH_NAMES[branch]
-		lab.add_theme_font_size_override("font_size", 16)
-		item.add_child(lab)
-		legend.add_child(item)
-	UITheme.apply_current(legend)
 
 func _refresh() -> void:
 	tokens_label.text = "★  %d tokens" % Global.tokens
