@@ -13,7 +13,6 @@ var _use_tears:         bool = false
 var _use_particles:     bool = false
 var _use_outline:       bool = false
 var _use_double_jump:   bool = false
-var _use_dash:          bool = false
 var _use_sprint:        bool = false
 var _use_wall_jump:     bool = false
 var _use_motion_trail:  bool = false
@@ -33,7 +32,6 @@ func _resolve_flags() -> void:
 	_use_particles     = Global.is_unlocked("particles")
 	_use_outline       = _use_sprite_player and Global.is_unlocked("outline")
 	_use_double_jump   = Global.is_unlocked("double_jump")
-	_use_dash          = Global.is_unlocked("dash_move")
 	_use_sprint        = Global.is_unlocked("sprint")
 	_use_wall_jump     = Global.is_unlocked("wall_jump")
 	_use_motion_trail  = Global.is_unlocked("motion_trail")
@@ -43,19 +41,20 @@ func _resolve_flags() -> void:
 
 func _ready() -> void:
 	super._ready()
+	add_to_group("player")
 	_resolve_flags()
 	_auto_setup_sprite_frames()
 
 	if _use_sprint:
 		run_speed = 820.0
+	if Global.is_unlocked("fast_mode") and bool(Global.settings_cfg.get("fast_mode", false)):
+		run_speed *= 1.35
 	maxSpeed = run_speed
 	maxSpeedLock = run_speed
 
 	# Gameplay-unlock wiring on the addon's existing fields.
 	if _use_double_jump:
 		jumps = 2
-	if _use_dash:
-		dashType = 1     # 1 = Horizontal
 	if _use_wall_jump:
 		wallJump = true
 	if has_method("_updateData"):
@@ -140,6 +139,11 @@ var _base_zoom: float = 1.0
 var _zoom_tweened_out: bool = false
 var _zoom_tween: Tween = null
 
+# Airborne edge-detect for combo system + stat tracking
+
+var _takeoff_y: float = 0.0
+var _peak_y: float = 0.0
+
 # Sensors
 var _foot_sensor: Area2D = null
 var _body_sensor: Area2D = null
@@ -190,12 +194,16 @@ func _on_foot_sensor_area_entered(area: Area2D) -> void:
 		if enemy and enemy.has_method("stomp_by"):
 			enemy.stomp_by(self)
 			_kick_impact_juice()
+			ComboSystem.notify_stomp(global_position)
+			Global.stat_add("enemies_stomped", 1)
 
 func _on_foot_sensor_body_entered(body: Node) -> void:
 	if is_dead: return
 	if velocity.y > 50 and body.has_method("stomp_by"):
 		body.stomp_by(self)
 		_kick_impact_juice()
+		ComboSystem.notify_stomp(global_position)
+		Global.stat_add("enemies_stomped", 1)
 
 # Brief slow-mo + chromatic kick on stomp. No-op if either unlock is off.
 func _kick_impact_juice() -> void:
@@ -307,6 +315,13 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
+	# The addon's multi-jump path (jumps > 1) blocks jump when is_on_wall() is true.
+	# Force it here before super runs so the player can still jump off the floor
+	# when pressing against a wall.
+	if jumps > 1 and is_on_floor() and is_on_wall():
+		if Input.is_action_just_pressed("jump"):
+			velocity.y = -jumpMagnitude
+
 	var local_limit = get_local_lowest_y() + 192.0
 	if global_position.y > local_limit:
 		die(true)
@@ -356,6 +371,7 @@ func _physics_process(delta: float) -> void:
 	# Track best distance in real time
 	var d := int(global_position.x / 128.0)
 	if d > Global.last_run_distance:
+		Global.stat_add("total_distance_m", d - Global.last_run_distance)
 		Global.last_run_distance = d
 
 func _squash_and_stretch(target_scale_modifier: Vector2) -> void:
@@ -383,10 +399,37 @@ func shake_camera(intensity: float, duration: float) -> void:
 func _process(delta: float) -> void:
 	super._process(delta)
 	if is_dead:
-		# Freeze all camera effects so the post-death view stays put.
+		ScreenFX.wobble_intensity = 0.0
 		return
 	if Global.debug_toggles.get("show_collisions", false):
 		queue_redraw()
+	# Drive in-air warp shader intensity from vertical speed.
+	if Global.is_unlocked("wobble_shader"):
+		var vel_y_abs = abs(velocity.y)
+		var target_wobble 	= clamp(vel_y_abs / 1200.0, 0.0, 1.0)
+		if is_on_floor():
+			target_wobble = 0.0
+		ScreenFX.wobble_intensity = move_toward(ScreenFX.wobble_intensity, target_wobble, delta * 5.0)
+	else:
+		ScreenFX.wobble_intensity = 0.0
+	# Combo/airtime tracking — edge-detect ground contact.
+	var on_floor := is_on_floor()
+	if on_floor != _was_on_floor:
+		ComboSystem.notify_airborne(not on_floor)
+		if not on_floor and velocity.y < -50.0:
+			# Leaving the ground upward → count as a jump.
+			Global.stat_add("jumps", 1)
+			_takeoff_y = global_position.y
+			_peak_y = global_position.y
+		elif on_floor and _takeoff_y != 0.0:
+			var jump_h := int(_takeoff_y - _peak_y)
+			if jump_h > 0:
+				Global.stat_max("highest_jump_px", jump_h)
+			_takeoff_y = 0.0
+		_was_on_floor = on_floor
+	if not on_floor and global_position.y < _peak_y:
+		_peak_y = global_position.y
+
 	if _shake_timer > 0:
 		_shake_timer -= delta
 		var cam = _get_camera()
@@ -463,9 +506,16 @@ func _get_camera() -> Camera2D:
 			return child
 	return null
 
-func die(is_fall: bool = false) -> void:
+func die(is_fall: bool = false, cause: String = "") -> void:
 	if is_dead: return
 	is_dead = true
+	if cause == "" and is_fall:
+		cause = "the fall"
+	Global.last_death_cause = cause
+	Global.stat_add("deaths", 1)
+	if cause != "":
+		Global.stat_bucket("deaths_by_cause", cause, 1)
+	Global.stat_max("longest_run_m", Global.last_run_distance)
 
 	if _body_sensor:
 		_body_sensor.set_deferred("monitoring", false)
@@ -519,6 +569,22 @@ func die(is_fall: bool = false) -> void:
 		collision_layer = 0
 		collision_mask = 0
 		velocity = Vector2.ZERO
+
+		# Death flash + squash animation before the tear/hide.
+		var target_node: Node = anim if (anim and _use_sprite_player) else self
+		var death_flash := create_tween()
+		death_flash.tween_property(target_node, "modulate",
+			Color(2.5, 2.5, 2.5, 1.0), 0.05)
+		death_flash.tween_property(target_node, "modulate",
+			Color(1.0, 0.18, 0.18, 1.0), 0.10)
+		if _use_juice and anim and _use_sprite_player:
+			var base_s: Vector2 = animScaleLock if animScaleLock != Vector2.ZERO else Vector2(0.5, 0.5)
+			death_flash.parallel().tween_property(anim, "scale",
+				base_s * Vector2(1.5, 0.5), 0.07)
+			death_flash.tween_property(anim, "scale",
+				base_s, 0.12).set_trans(Tween.TRANS_BACK)
+		await death_flash.finished
+
 		if anim and _use_sprite_anims:
 			var anim_name = "hurt_1" if randf() < 0.5 else "hurt_2"
 			anim.play(anim_name)

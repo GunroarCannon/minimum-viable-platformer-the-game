@@ -3,13 +3,13 @@ extends CanvasLayer
 @onready var back_btn: Button = $Root/TopBar/BackButton
 @onready var title_label: Label = $Root/TopBar/Title
 
-@onready var master_slider: HSlider = $Root/Panel/V/MasterRow/Slider
-@onready var sfx_slider: HSlider = $Root/Panel/V/SFXRow/Slider
-@onready var theme_option: OptionButton = $Root/Panel/V/ThemeRow/Option
-@onready var debug_cb: CheckBox = $Root/Panel/V/DebugRow/CheckBox
-@onready var primitives_cb: CheckBox = $Root/Panel/V/PrimitivesRow/CheckBox
-@onready var unlock_all_cb: CheckBox = $Root/Panel/V/UnlockAllRow/CheckBox
-@onready var reset_btn: Button = $Root/Panel/V/ResetButton
+@onready var master_slider: HSlider = $Root/Panel/Scroll/V/MasterRow/Slider
+@onready var sfx_slider: HSlider = $Root/Panel/Scroll/V/SFXRow/Slider
+@onready var theme_option: OptionButton = $Root/Panel/Scroll/V/ThemeRow/Option
+@onready var debug_cb: CheckBox = $Root/Panel/Scroll/V/DebugRow/CheckBox
+@onready var primitives_cb: CheckBox = $Root/Panel/Scroll/V/PrimitivesRow/CheckBox
+@onready var unlock_all_cb: CheckBox = $Root/Panel/Scroll/V/UnlockAllRow/CheckBox
+@onready var reset_btn: Button = $Root/Panel/Scroll/V/ResetButton
 
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back)
@@ -60,8 +60,96 @@ func _ready() -> void:
 		title_label.text = "Settings (progress reset)"
 	)
 	title_label.text = "Settings"
+
+	# ── Dynamic extra rows (added programmatically so the .tscn stays minimal) ──
+	var vbox: VBoxContainer = $Root/Panel/Scroll/V
+	_add_checkbox_row(vbox, "Blood trail",
+		Global.settings_cfg.get("blood_trail", true),
+		func(v: bool):
+			Global.settings_cfg["blood_trail"] = v
+			Global.save_state()
+	)
+	if Global.is_unlocked("palette_switcher"):
+		_add_option_row(vbox, "Colour palette",
+			["Default", "Warm", "Cool", "Night", "Neon"],
+			["default", "warm", "cool", "night", "neon"],
+			Global.color_palette,
+			func(key: String):
+				Global.color_palette = key
+				Global.save_state()
+		)
+	if Global.is_unlocked("sky_color"):
+		_add_option_row(vbox, "Sky colour",
+			["Default", "Sunset", "Night", "Dawn", "Overcast"],
+			["default", "sunset", "night", "dawn", "overcast"],
+			Global.sky_color,
+			func(key: String):
+				Global.sky_color = key
+				Global.save_state()
+		)
+	if Global.is_unlocked("fast_mode"):
+		_add_checkbox_row(vbox, "Fast Mode (+points)",
+			bool(Global.settings_cfg.get("fast_mode", false)),
+			func(v: bool):
+				Global.settings_cfg["fast_mode"] = v
+				Global.save_state()
+		)
+	if Global.is_unlocked("font_select"):
+		var font_files := _list_fonts()
+		var names := []
+		var keys := []
+		names.append("Default")
+		keys.append("default")
+		for path in font_files:
+			names.append(path.get_file().get_basename())
+			keys.append(path.get_file())
+		_add_option_row(vbox, "Font",
+			names, keys,
+			String(Global.settings_cfg.get("font_choice", "default")),
+			func(key: String):
+				Global.settings_cfg["font_choice"] = key
+				Global.save_state()
+				UITheme.apply_current(self)
+		)
+
 	UITheme.apply_current(self)
 	_apply_audio()
+
+func _list_fonts() -> Array:
+	return SkillsDB.list_font_files()
+
+func _add_checkbox_row(parent: VBoxContainer, label_text: String, initial: bool, callback: Callable) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	var lbl := Label.new()
+	lbl.custom_minimum_size = Vector2(180, 0)
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.text = label_text
+	row.add_child(lbl)
+	var cb := CheckBox.new()
+	cb.button_pressed = initial
+	cb.toggled.connect(callback)
+	row.add_child(cb)
+	parent.add_child(row)
+
+func _add_option_row(parent: VBoxContainer, label_text: String,
+		display_names: Array, keys: Array, current_key: String, callback: Callable) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	var lbl := Label.new()
+	lbl.custom_minimum_size = Vector2(180, 0)
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.text = label_text
+	row.add_child(lbl)
+	var opt := OptionButton.new()
+	opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for i in display_names.size():
+		opt.add_item(display_names[i], i)
+	var idx := keys.find(current_key)
+	opt.selected = max(0, idx)
+	opt.item_selected.connect(func(i: int): callback.call(keys[i]))
+	row.add_child(opt)
+	parent.add_child(row)
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):

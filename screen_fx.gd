@@ -4,11 +4,11 @@ extends CanvasLayer
 ## ColorRect with a ShaderMaterial. Stacking order is fixed; passes only run
 ## when their respective unlock is owned and `Global.use_primitives` is off.
 ##
-## Order: color_grading → chromatic_aberration → vignette → crt_filter
+## Order: color_grading → chromatic_aberration → vignette → crt_filter → wobble_shader
 ## (outline is per-sprite, applied directly to player anim, not here)
 ##
 ## Pulses (for chromatic):  call ScreenFX.kick_chromatic(amount, duration)
-## from the player when something violent happens.
+## Wobble intensity:        set ScreenFX.wobble_intensity from player each frame
 
 var passes: Dictionary = {}      # feature_key → ColorRect
 var _chromatic_decay: float = 0.0
@@ -16,13 +16,26 @@ var _chromatic_kick: float = 0.0
 const CHROMATIC_BASE := 0.006
 const CHROMATIC_MAX  := 0.028
 
+## Set each frame by player.gd when "wobble_shader" is unlocked.
+var wobble_intensity: float = 0.0
+var _wobble_time: float = 0.0
+
 func _ready() -> void:
 	layer = 90
 	_add_pass("color_grading",        preload("res://shaders/color_grading.gdshader"))
 	_add_pass("chromatic_aberration", preload("res://shaders/chromatic.gdshader"))
 	_add_pass("vignette",             preload("res://shaders/vignette.gdshader"))
-	_add_pass("crt_filter",           preload("res://shaders/crt.gdshader"))
+	# Skip screen-sampling shaders on lightweight targets (web + mobile) — they
+	# tank the frame rate and don't compose well with the GL Compat renderer's
+	# framebuffer round-trips on those platforms.
+	if not _is_lightweight_target():
+		_add_pass("crt_filter",       preload("res://shaders/crt.gdshader"))
+		_add_pass("wobble_shader",    preload("res://shaders/wobble.gdshader"))
 	set_process(true)
+
+func _is_lightweight_target() -> bool:
+	var name := OS.get_name()
+	return name in ["Web", "Android", "iOS"]
 
 func _add_pass(feature_key: String, sh: Shader) -> void:
 	var r = ColorRect.new()
@@ -37,13 +50,26 @@ func _add_pass(feature_key: String, sh: Shader) -> void:
 	passes[feature_key] = r
 
 func _process(delta: float) -> void:
+	_wobble_time += delta
+
 	for key in passes.keys():
-		var enabled = Global.is_unlocked(key) and not Global.use_primitives
 		var r: ColorRect = passes[key]
+		var enabled: bool
+		if key == "wobble_shader":
+			# Wobble only visible when unlocked and the player is actually in air.
+			enabled = Global.is_unlocked(key) and not Global.use_primitives and wobble_intensity > 0.0005
+		else:
+			enabled = Global.is_unlocked(key) and not Global.use_primitives
 		if r.visible != enabled:
 			r.visible = enabled
 
-	# Decay chromatic kick
+	# Update wobble shader uniforms each frame.
+	var wobble_r: ColorRect = passes.get("wobble_shader", null)
+	if wobble_r and wobble_r.material:
+		wobble_r.material.set_shader_parameter("intensity", wobble_intensity)
+		wobble_r.material.set_shader_parameter("time_sec", _wobble_time)
+
+	# Decay chromatic kick.
 	if _chromatic_kick > 0.0:
 		_chromatic_kick = max(0.0, _chromatic_kick - delta * _chromatic_decay)
 		var r2: ColorRect = passes.get("chromatic_aberration", null)

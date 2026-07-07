@@ -109,6 +109,24 @@ static func apply(root: Node, theme_name: String) -> void:
 		_apply_polished(root)
 	else:
 		_apply_placeholder(root)
+	_apply_font_choice(root)
+
+## When the "font_select" upgrade is bought and a font is chosen in Settings,
+## override the default font on all Buttons / Labels / CheckBoxes in the tree.
+static func _apply_font_choice(root: Node) -> void:
+	if not Global.is_unlocked("font_select"): return
+	var choice: String = String(Global.settings_cfg.get("font_choice", "default"))
+	if choice == "" or choice == "default": return
+	var path := "res://assets/fonts/%s" % choice
+	if not ResourceLoader.exists(path): return
+	var font: Font = load(path)
+	if font == null: return
+	_walk(root, func(node):
+		if node is Button or node is Label or node is CheckBox:
+			node.add_theme_font_override("font", font)
+		elif node is OptionButton or node is LineEdit:
+			node.add_theme_font_override("font", font)
+	)
 
 static func _apply_placeholder(root: Node) -> void:
 	_walk(root, func(node):
@@ -132,7 +150,11 @@ static func _apply_placeholder(root: Node) -> void:
 
 static func _apply_polished(root: Node) -> void:
 	_walk(root, func(node):
-		if node is Button:
+		if node is CheckBox:
+			# CheckBox first — it inherits from Button so the Button branch would
+			# otherwise stomp its styling.
+			_style_checkbox_polished(node)
+		elif node is Button:
 			node.add_theme_stylebox_override("normal", _polished_button())
 			node.add_theme_stylebox_override("hover", _polished_button_hover())
 			node.add_theme_stylebox_override("pressed", _polished_button_pressed())
@@ -148,9 +170,54 @@ static func _apply_polished(root: Node) -> void:
 			node.add_theme_color_override("font_color", COL_INK)
 			node.add_theme_color_override("font_outline_color", COL_PEACH)
 			node.add_theme_constant_override("outline_size", 4)
-		elif node is CheckBox:
-			node.add_theme_color_override("font_color", COL_INK)
 	)
+
+## Draw a rounded pill "switch" behind the checkbox and swap the tick icons.
+static func _style_checkbox_polished(cb: CheckBox) -> void:
+	cb.add_theme_color_override("font_color", COL_INK)
+	cb.add_theme_font_size_override("font_size", 22)
+	# Clear default button chrome.
+	var empty := StyleBoxEmpty.new()
+	cb.add_theme_stylebox_override("normal", empty)
+	cb.add_theme_stylebox_override("hover", empty)
+	cb.add_theme_stylebox_override("pressed", empty)
+	cb.add_theme_stylebox_override("focus", empty)
+	# Swap the check icons for custom "off" / "on" rounded pills so the toggle
+	# actually reads as a physical switch instead of a boxy tick.
+	cb.add_theme_icon_override("unchecked", _switch_icon(false))
+	cb.add_theme_icon_override("checked",   _switch_icon(true))
+	cb.add_theme_icon_override("unchecked_disabled", _switch_icon(false, true))
+	cb.add_theme_icon_override("checked_disabled",   _switch_icon(true, true))
+	cb.add_theme_icon_override("radio_unchecked", _switch_icon(false))
+	cb.add_theme_icon_override("radio_checked",   _switch_icon(true))
+
+static func _switch_icon(on: bool, disabled: bool = false) -> ImageTexture:
+	var w := 56
+	var h := 28
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var track_col := (Color(0.85, 0.62, 0.24) if on else Color(0.55, 0.50, 0.45))
+	if disabled: track_col = track_col.lerp(Color(0.5, 0.5, 0.5), 0.5)
+	var knob_col := Color(0.99, 0.92, 0.80)
+	# Track: horizontal capsule.
+	for y in h:
+		for x in w:
+			var cx = (x if x < h * 0.5 else (w - h * 0.5 if x > w - h * 0.5 else h * 0.5))
+			var dx = x - cx
+			var dy = y - h * 0.5
+			var in_cap: bool = (x >= h * 0.5 and x <= w - h * 0.5) or dx * dx + dy * dy <= (h * 0.5) * (h * 0.5)
+			if in_cap:
+				img.set_pixel(x, y, track_col)
+	# Knob: circle on the side.
+	var knob_r := h * 0.5 - 3
+	var knob_cx := (w - h * 0.5) if on else h * 0.5
+	for y in h:
+		for x in w:
+			var dx = x - knob_cx
+			var dy = y - h * 0.5
+			if dx * dx + dy * dy <= knob_r * knob_r:
+				img.set_pixel(x, y, knob_col)
+	return ImageTexture.create_from_image(img)
 
 static func _walk(node: Node, cb: Callable) -> void:
 	cb.call(node)

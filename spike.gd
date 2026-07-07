@@ -8,6 +8,8 @@ class_name Spike
 var sprite: Sprite2D = null
 
 func _ready() -> void:
+	# Render behind floor visuals (z=-10) so the spike base looks planted in ground.
+	z_index = -12
 	# Detect both player (layer 1) and living enemies (layer 2), but NOT bullets
 	collision_layer = 2
 	collision_mask  = 3  # layer 1 (player/floor bodies) + layer 2 (enemies)
@@ -24,6 +26,10 @@ func _ready() -> void:
 			var tex_size = sprite.texture.get_size()
 			if tex_size.x > 0 and tex_size.y > 0:
 				sprite.scale = spike_size / tex_size
+		# Shift visual left by half a tile so the spike sits over the tile
+		# the level generator intended, not the tile to its right.
+		if sprite.scale.x != 0.0:
+			sprite.offset.x = -(spike_size.x * 0.5) / sprite.scale.x
 		add_child(sprite)
 
 	body_entered.connect(_on_body_entered)
@@ -56,7 +62,7 @@ func _on_body_entered(body: Node2D) -> void:
 			return
 		body.die_torn(body.velocity)
 	elif body.has_method("die"):
-		body.die()  # player – by_fall defaults false → tear death
+		body.die(false, "spikes")  # player – by_fall defaults false → tear death
 
 func _on_area_entered(area: Area2D) -> void:
 	print("[Spike Debug] area_entered by: ", area.name, " script: ", area.get_script().resource_path if area.get_script() else "none")

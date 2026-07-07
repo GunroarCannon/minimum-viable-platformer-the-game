@@ -45,6 +45,10 @@ var tokens: int = 0
 ## Dictionary of unlocked feature keys. e.g. { "ui": true, "juice_squash": true }
 var unlocked: Dictionary = {}
 
+## Per-feature enabled overrides — false means the skill was bought but is turned off.
+## Defaults to true (enabled) for all keys not present.
+var feature_overrides: Dictionary = {}
+
 ## True the first time the player has died at least once.
 var first_death_done: bool = false
 
@@ -54,12 +58,99 @@ var best_distance: int = 0
 ## Tracks last awarded distance so we don't double-award mid-run.
 var last_run_distance: int = 0
 
+## Human-readable cause of the last death, shown on the game-over screen.
+var last_death_cause: String = ""
+
+## Set true when a run was started as the Daily Level.
+var is_daily_run: bool = false
+
+## Seed of the currently running (or most recently run) level.
+var current_run_seed: int = 0
+
+## Saved level library entries. Each entry: {seed, distance, favorite}.
+var level_library: Array = []
+
+## Active colour palette key. Options: "default", "warm", "cool", "night", "neon"
+var color_palette: String = "default":
+	set(v):
+		color_palette = v
+		emit_signal("palette_changed")
+
+signal palette_changed()
+signal sky_changed()
+
+## Active sky colour key. Options: "default", "sunset", "night", "dawn", "overcast"
+var sky_color: String = "default":
+	set(v):
+		sky_color = v
+		emit_signal("sky_changed")
+
+## Returns a canvas-modulate tint colour representing the active palette.
+func palette_tint() -> Color:
+	match color_palette:
+		"warm":  return Color(1.15, 0.95, 0.80)
+		"cool":  return Color(0.80, 0.95, 1.15)
+		"night": return Color(0.55, 0.60, 0.85)
+		"neon":  return Color(1.20, 0.70, 1.20)
+		_:       return Color.WHITE
+
 ## Persisted settings (audio, theme, etc.)
 var settings_cfg: Dictionary = {
 	"master_volume": 0.8,
 	"sfx_volume": 0.8,
 	"theme": "polished",
+	"blood_trail": true,
+	"font_choice": "default",
+	"fast_mode": false,
 }
+
+## Persisted lifetime stats — displayed in the Stats menu.
+var stats: Dictionary = {
+	"playtime_sec": 0.0,
+	"jumps": 0,
+	"longest_run_m": 0,
+	"highest_jump_px": 0,
+	"longest_combo": 0,
+	"deaths": 0,
+	"deaths_by_cause": {},
+	"bullets_fired": 0,
+	"total_distance_m": 0,
+	"total_points_earned": 0,
+	"total_points_spent": 0,
+	"upgrades_bought": 0,
+	"sessions": 0,
+	"seeds_visited": {},
+	"days_played": {},
+	"daily_completed": 0,
+	"enemies_stomped": 0,
+}
+
+## Alphabet used for short seed codes. Excludes ambiguous chars (0/O, 1/I/L).
+const SEED_ALPHABET := "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+const SEED_CODE_LEN := 4
+
+## 4-char alphanumeric code from a seed. Deterministic.
+static func seed_to_code(seed_val: int) -> String:
+	var base := SEED_ALPHABET.length()
+	var v := int(abs(seed_val))
+	var out := ""
+	for i in SEED_CODE_LEN:
+		out = SEED_ALPHABET[v % base] + out
+		v = v / base
+	return out
+
+## Inverse. Returns 0 if code is invalid.
+static func code_to_seed(code: String) -> int:
+	var s := code.strip_edges().to_upper()
+	if s.length() != SEED_CODE_LEN: return 0
+	var base := SEED_ALPHABET.length()
+	var v := 0
+	for i in s.length():
+		var ch := s[i]
+		var idx := SEED_ALPHABET.find(ch)
+		if idx < 0: return 0
+		v = v * base + idx
+	return v
 
 const META_SAVE_PATH := "user://meta.dat"
 const TOKEN_PER_TILES := 25       # 1 token per 25 tiles ran
@@ -70,7 +161,16 @@ func _ready() -> void:
 	print("[Global] _ready() called — initialising input map")
 	_initialize_input_map()
 	load_state()
+	set_process(true)
 	print("[Global] _ready() complete | tokens=", tokens, " unlocked=", unlocked)
+
+var _playtime_save_accum: float = 0.0
+func _process(delta: float) -> void:
+	stats["playtime_sec"] = float(stats.get("playtime_sec", 0.0)) + delta
+	_playtime_save_accum += delta
+	if _playtime_save_accum > 30.0:
+		_playtime_save_accum = 0.0
+		save_state()
 
 
 ## ─── PERSISTENCE ────────────────────────────────────────────────────────
@@ -81,9 +181,14 @@ func save_state() -> void:
 	var blob = {
 		"tokens": tokens,
 		"unlocked": unlocked,
+		"feature_overrides": feature_overrides,
 		"first_death_done": first_death_done,
 		"best_distance": best_distance,
 		"settings_cfg": settings_cfg,
+		"level_library": level_library,
+		"color_palette": color_palette,
+		"sky_color": sky_color,
+		"stats": stats,
 	}
 	f.store_var(blob)
 	f.close()
@@ -97,10 +202,42 @@ func load_state() -> void:
 	if typeof(blob) != TYPE_DICTIONARY: return
 	tokens = int(blob.get("tokens", 0))
 	unlocked = blob.get("unlocked", {})
+	feature_overrides = blob.get("feature_overrides", {})
 	first_death_done = bool(blob.get("first_death_done", false))
 	best_distance = int(blob.get("best_distance", 0))
 	for k in blob.get("settings_cfg", {}).keys():
 		settings_cfg[k] = blob["settings_cfg"][k]
+	level_library = blob.get("level_library", [])
+	color_palette = String(blob.get("color_palette", "default"))
+	sky_color = String(blob.get("sky_color", "default"))
+	var stored_stats = blob.get("stats", {})
+	if typeof(stored_stats) == TYPE_DICTIONARY:
+		for k in stored_stats.keys():
+			stats[k] = stored_stats[k]
+	stats["sessions"] = int(stats.get("sessions", 0)) + 1
+	_mark_today_played()
+
+func _mark_today_played() -> void:
+	var d: Dictionary = Time.get_date_dict_from_system()
+	var key := "%04d-%02d-%02d" % [int(d.year), int(d.month), int(d.day)]
+	var days: Dictionary = stats.get("days_played", {})
+	days[key] = true
+	stats["days_played"] = days
+
+## Record a stat delta. Use for counters. Persists on save_state.
+func stat_add(key: String, delta = 1) -> void:
+	stats[key] = (stats.get(key, 0) if typeof(stats.get(key, 0)) == typeof(delta) else 0) + delta
+
+## Track high-water marks (e.g. longest run, highest jump).
+func stat_max(key: String, value) -> void:
+	if value > stats.get(key, 0):
+		stats[key] = value
+
+## Bucketed counter (e.g. deaths_by_cause[cause] += 1).
+func stat_bucket(bucket_key: String, entry_key: String, delta: int = 1) -> void:
+	var b: Dictionary = stats.get(bucket_key, {})
+	b[entry_key] = int(b.get(entry_key, 0)) + delta
+	stats[bucket_key] = b
 
 
 ## ─── FEATURE QUERIES ───────────────────────────────────────────────────
@@ -108,7 +245,10 @@ func load_state() -> void:
 func is_unlocked(feature_key: String) -> bool:
 	if debug_toggles.get("unlock_all", false):
 		return true
-	return bool(unlocked.get(feature_key, false))
+	if not bool(unlocked.get(feature_key, false)):
+		return false
+	# Respect per-feature toggle (default true = enabled).
+	return bool(feature_overrides.get(feature_key, true))
 
 ## Graphics-gate helper used by every sprite-loading entity.
 ## Returns true when "use sprite art" is wanted for the given unlock key.
@@ -117,27 +257,69 @@ func gfx(feature_key: String) -> bool:
 	return is_unlocked(feature_key)
 
 func grant(feature_key: String) -> void:
+	if not unlocked.get(feature_key, false):
+		stat_add("upgrades_bought", 1)
 	unlocked[feature_key] = true
+	# Auto-enable when first purchased.
+	feature_overrides[feature_key] = true
 	save_state()
 
 ## Spend N tokens. Returns true if successful.
 func spend(n: int) -> bool:
 	if tokens < n: return false
 	tokens -= n
+	stat_add("total_points_spent", n)
 	save_state()
 	return true
 
 func add_tokens(n: int) -> void:
 	if n <= 0: return
 	tokens += n
+	stat_add("total_points_earned", n)
 	save_state()
 
 ## Convenience for clearing all progress (used in settings reset).
 func reset_progress() -> void:
 	tokens = 0
 	unlocked = {}
+	feature_overrides = {}
 	first_death_done = false
 	best_distance = 0
+	level_library = []
+	color_palette = "default"
+	sky_color = "default"
+	save_state()
+
+## Enable or disable a purchased feature without losing it.
+func set_feature_override(feature_key: String, enabled: bool) -> void:
+	feature_overrides[feature_key] = enabled
+	save_state()
+
+
+## ─── LEVEL LIBRARY ─────────────────────────────────────────────────────
+
+func add_to_library(seed_val: int, distance_m: int) -> void:
+	if not is_unlocked("level_library"): return
+	if seed_val == 0: return
+	for entry in level_library:
+		if entry.get("seed", 0) == seed_val:
+			if distance_m > entry.get("distance", 0):
+				entry["distance"] = distance_m
+			save_state()
+			return
+	level_library.append({
+		"seed": seed_val,
+		"distance": distance_m,
+		"favorite": false,
+	})
+	# Evict oldest non-favourite entries if over cap.
+	var non_fav: Array = []
+	for e in level_library:
+		if not e.get("favorite", false):
+			non_fav.append(e)
+	while non_fav.size() > 100:
+		var oldest = non_fav.pop_front()
+		level_library.erase(oldest)
 	save_state()
 
 
@@ -152,10 +334,18 @@ func on_player_death(distance_tiles: int) -> int:
 	if not first_death_done:
 		first_death_done = true
 		awarded += FIRST_DEATH_BONUS
+	# Fast Mode pays a 50% bounty on top of the base reward.
+	if is_unlocked("fast_mode") and bool(settings_cfg.get("fast_mode", false)):
+		awarded = int(round(awarded * 1.5))
 	if distance_tiles > best_distance:
 		best_distance = distance_tiles
 	tokens += awarded
+	stat_add("total_points_earned", awarded)
+	if is_daily_run:
+		stat_add("daily_completed", 1)
+		is_daily_run = false
 	last_run_distance = distance_tiles
+	add_to_library(current_run_seed, distance_tiles)
 	save_state()
 	return awarded
 

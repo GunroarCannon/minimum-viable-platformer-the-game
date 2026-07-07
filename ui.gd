@@ -7,16 +7,26 @@ class_name GameOverUI
 
 @onready var dim: ColorRect      = $Dim
 @onready var center: CenterContainer = $Center
-@onready var box: VBoxContainer  = $Center/Box
-@onready var title_label: Label  = $Center/Box/Title
-@onready var tokens_earned_label: Label = $Center/Box/Earned
-@onready var hint_label: Label   = $Center/Box/Hint
+@onready var box: VBoxContainer  = $Center/ScrollWrap/Box
+@onready var title_label: Label  = $Center/ScrollWrap/Box/Title
+@onready var tokens_earned_label: Label = $Center/ScrollWrap/Box/Earned
+@onready var hint_label: Label   = $Center/ScrollWrap/Box/Hint
 
-@onready var btn_buy_ui: Button   = $Center/Box/Buttons/BuyUIButton
-@onready var btn_retry: Button    = $Center/Box/Buttons/RetryButton
-@onready var btn_shop: Button     = $Center/Box/Buttons/ShopButton
-@onready var btn_menu: Button     = $Center/Box/Buttons/MenuButton
-@onready var btn_exit: Button     = $Center/Box/Buttons/ExitButton
+@onready var btn_buy_ui: Button   = $Center/ScrollWrap/Box/Buttons/BuyUIButton
+@onready var btn_retry: Button    = $Center/ScrollWrap/Box/Buttons/RetryButton
+@onready var btn_shop: Button     = $Center/ScrollWrap/Box/Buttons/ShopButton
+@onready var btn_menu: Button     = $Center/ScrollWrap/Box/Buttons/MenuButton
+@onready var btn_exit: Button     = $Center/ScrollWrap/Box/Buttons/ExitButton
+@onready var buttons_box: VBoxContainer = $Center/ScrollWrap/Box/Buttons
+
+## Dynamically created seed label + save button (only when library is unlocked).
+var _seed_label: Label = null
+var _save_btn: Button = null
+var _replay_btn: Button = null
+var _highscore_lbl: Label = null
+
+## Dynamically created "Killed by …" label under the title.
+var _cause_label: Label = null
 
 func _ready() -> void:
 	visible = false
@@ -28,15 +38,99 @@ func _ready() -> void:
 
 func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 	visible = true
-	# Configure depending on UI unlock state.
 	var has_ui := Global.is_unlocked("ui")
 	if has_ui:
 		_configure_post_ui(tokens_awarded, distance_m)
 	else:
 		_configure_pre_ui(tokens_awarded)
-	# Apply theme last so disabled-button visuals look right.
+
+	_update_cause_label()
+
+	# Show seed info when library is unlocked.
+	_update_library_widgets()
+
 	UITheme.apply_current(self)
 	_play_in_tween()
+
+func _update_cause_label() -> void:
+	var cause: String = Global.last_death_cause
+	if cause == "":
+		if _cause_label:
+			_cause_label.visible = false
+		return
+	if _cause_label == null:
+		_cause_label = Label.new()
+		_cause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_cause_label.add_theme_font_size_override("font_size", 18)
+		box.add_child(_cause_label)
+		# Sit just under the title (index 0).
+		box.move_child(_cause_label, 1)
+	_cause_label.visible = true
+	_cause_label.text = "Killed by %s" % cause
+
+func _update_library_widgets() -> void:
+	if not Global.is_unlocked("level_library"):
+		if _seed_label: _seed_label.queue_free(); _seed_label = null
+		if _save_btn:   _save_btn.queue_free();   _save_btn = null
+		if _replay_btn: _replay_btn.queue_free(); _replay_btn = null
+		if _highscore_lbl: _highscore_lbl.queue_free(); _highscore_lbl = null
+		return
+
+	if _seed_label == null:
+		_seed_label = Label.new()
+		_seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_seed_label.add_theme_font_size_override("font_size", 16)
+		box.add_child(_seed_label)
+		box.move_child(_seed_label, box.get_child_count() - 2)  # before Buttons
+
+	_seed_label.text = "Seed:  %s" % Global.seed_to_code(Global.current_run_seed)
+
+	# Replay-same-level button — sits at the TOP of the buttons stack.
+	if _replay_btn == null:
+		_replay_btn = Button.new()
+		_replay_btn.text = "↻  Replay this level"
+		_replay_btn.custom_minimum_size = Vector2(360, 60)
+		_replay_btn.pressed.connect(_on_replay_same)
+		buttons_box.add_child(_replay_btn)
+		buttons_box.move_child(_replay_btn, 0)
+
+	# Highscore label — sits directly under replay.
+	if _highscore_lbl == null:
+		_highscore_lbl = Label.new()
+		_highscore_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_highscore_lbl.add_theme_font_size_override("font_size", 18)
+		buttons_box.add_child(_highscore_lbl)
+		buttons_box.move_child(_highscore_lbl, 1)
+	var best := _best_for_current_seed()
+	_highscore_lbl.text = "Best on this seed:  %d m" % best
+
+	# Favourite button — moved to the BOTTOM of the box, not the top.
+	if _save_btn == null:
+		_save_btn = Button.new()
+		_save_btn.pressed.connect(_on_favourite_level)
+		box.add_child(_save_btn)  # ends up as last child by default
+	box.move_child(_save_btn, box.get_child_count() - 1)
+
+	var already_fav := false
+	for entry in Global.level_library:
+		if int(entry.get("seed", 0)) == Global.current_run_seed:
+			if bool(entry.get("favorite", false)):
+				already_fav = true
+			break
+	_save_btn.text = "★  Favourited!" if already_fav else "★  Favourite this level"
+	_save_btn.disabled = already_fav
+
+func _best_for_current_seed() -> int:
+	for entry in Global.level_library:
+		if int(entry.get("seed", 0)) == Global.current_run_seed:
+			return int(entry.get("distance", 0))
+	return Global.last_run_distance
+
+func _on_replay_same() -> void:
+	var level_gen = load("res://level_generator.gd")
+	if level_gen:
+		level_gen.current_seed = Global.current_run_seed
+	get_tree().reload_current_scene()
 
 func _configure_pre_ui(tokens_awarded: int) -> void:
 	title_label.text = "you died."
@@ -46,7 +140,7 @@ func _configure_pre_ui(tokens_awarded: int) -> void:
 	btn_buy_ui.text = "Buy UI (1 ★)"
 	btn_buy_ui.disabled = Global.tokens < 1
 	btn_retry.visible = true
-	btn_retry.text = "Run again"
+	btn_retry.text = "New Level" if Global.is_unlocked("level_library") else "Run again"
 	btn_shop.visible = false
 	btn_menu.visible = false
 	btn_exit.visible = true
@@ -57,7 +151,7 @@ func _configure_post_ui(tokens_awarded: int, distance_m: int) -> void:
 	hint_label.text = "Spend tokens in the shop to unlock more."
 	btn_buy_ui.visible = false
 	btn_retry.visible = true
-	btn_retry.text = "Run again"
+	btn_retry.text = "New Level" if Global.is_unlocked("level_library") else "Run again"
 	btn_shop.visible = true
 	btn_shop.text = "Shop (%d ★)" % Global.tokens
 	btn_menu.visible = true
@@ -79,7 +173,6 @@ func _on_buy_ui() -> void:
 	if Global.tokens < 1: return
 	if Global.spend(1):
 		Global.grant("ui")
-		# Bounce into the main menu now that we own it.
 		get_tree().change_scene_to_file("res://main_menu.tscn")
 
 func _on_retry() -> void:
@@ -96,3 +189,23 @@ func _on_menu() -> void:
 
 func _on_exit() -> void:
 	get_tree().quit()
+
+func _on_favourite_level() -> void:
+	for entry in Global.level_library:
+		if int(entry.get("seed", 0)) == Global.current_run_seed:
+			entry["favorite"] = true
+			Global.save_state()
+			if _save_btn:
+				_save_btn.text = "★  Favourited!"
+				_save_btn.disabled = true
+			return
+	# Not in library yet — add it now.
+	Global.level_library.append({
+		"seed": Global.current_run_seed,
+		"distance": Global.last_run_distance,
+		"favorite": true,
+	})
+	Global.save_state()
+	if _save_btn:
+		_save_btn.text = "★  Favourited!"
+		_save_btn.disabled = true

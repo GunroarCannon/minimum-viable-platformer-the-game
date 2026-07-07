@@ -5,8 +5,8 @@ extends Control
 signal skill_selected(skill_id: String)
 signal skill_purchased(skill_id: String)
 
-const NODE_RADIUS := 38.0
-const GRID_SCALE  := Vector2(140.0, 110.0)
+const NODE_RADIUS := 36.0
+const GRID_SCALE  := Vector2(130.0, 110.0)
 
 @export var pan_speed_keyboard: float = 480.0
 
@@ -197,12 +197,24 @@ func _draw_node(sid: String) -> void:
 	var prereq := SkillsDB.prereqs_met(sid)
 	var affordable := SkillsDB.can_afford(sid)
 
+	# Distance-based fade when Menu Polish is on: nodes far from screen centre
+	# fade towards 0.35 alpha, so the eye is pulled to the middle of the tree.
+	var alpha := 1.0
+	var polished := Global.is_unlocked("main_menu_extras")
+	if polished:
+		var screen_center := size * 0.5
+		var dist := p.distance_to(screen_center)
+		var fade_start = min(size.x, size.y) * 0.28
+		var fade_full  = min(size.x, size.y) * 0.55
+		if dist > fade_start:
+			alpha = 1.0 - clamp((dist - fade_start) / max(1.0, fade_full - fade_start), 0.0, 0.65)
+
 	var r := NODE_RADIUS
 	if sid == _hover_id: r += 4
 	if sid == _selected_id: r += 2
 
 	# Shadow
-	draw_circle(p + Vector2(0, 4), r, Color(0, 0, 0, 0.25))
+	draw_circle(p + Vector2(0, 4), r + (2.0 if polished else 0.0), Color(0, 0, 0, 0.25 * alpha))
 
 	# Body
 	var bg: Color
@@ -215,20 +227,28 @@ func _draw_node(sid: String) -> void:
 			bg = Color(0.85, 0.80, 0.70)
 	else:
 		bg = Color(0.40, 0.36, 0.30)
+	bg.a *= alpha
 	draw_circle(p, r, bg)
 
+	# Polished node bling — inner highlight ring + gradient dot.
+	if polished:
+		draw_circle(p - Vector2(r * 0.35, r * 0.4), r * 0.32, Color(1, 1, 1, 0.35 * alpha))
+		draw_arc(p, r * 0.72, 0.0, TAU, 40, Color(1, 1, 1, 0.35 * alpha), 2.0, true)
+
 	# Ring
-	var ring_col := Color(0.18, 0.14, 0.10)
-	if sid == _selected_id: ring_col = Color(1, 1, 1)
+	var ring_col := Color(0.18, 0.14, 0.10, alpha)
+	if sid == _selected_id: ring_col = Color(1, 1, 1, alpha)
 	draw_arc(p, r, 0.0, TAU, 64, ring_col, 3.5, true)
 
-	# Glyph
-	var icon: String = d.get("icon", "•")
+	# Icon label (2-letter ASCII)
+	var icon: String = d.get("icon", "?")
 	var font = ThemeDB.fallback_font
-	var fs := 30
+	var fs := 16
 	var ts = font.get_string_size(icon, HORIZONTAL_ALIGNMENT_CENTER, -1, fs)
-	draw_string(font, p - ts * 0.5 + Vector2(0, ts.y * 0.32), icon,
-		HORIZONTAL_ALIGNMENT_CENTER, -1, fs, ring_col)
+	var icon_col := ring_col
+	icon_col.a = alpha
+	draw_string(font, p - ts * 0.5 + Vector2(0, ts.y * 0.40), icon,
+		HORIZONTAL_ALIGNMENT_CENTER, -1, fs, icon_col)
 
 	# Label below
 	var name_str: String = d.get("name", sid)
@@ -245,7 +265,7 @@ func _draw_node(sid: String) -> void:
 
 	# Cost badge
 	if not purchased:
-		var cost = int(d.get("cost", 0))
+		var cost = SkillsDB.compute_cost(sid)
 		var cs := "%d ★" % cost
 		var cfs := 14
 		var cts = font.get_string_size(cs, HORIZONTAL_ALIGNMENT_CENTER, -1, cfs)

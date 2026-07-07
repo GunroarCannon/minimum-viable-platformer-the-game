@@ -48,6 +48,7 @@ func _shoot() -> void:
 	# Spawn completely outside the shooter's hitbox (32 + 32 = 64 minimum clearance)
 	bullet.global_position = global_position + Vector2(direction * 70, -20)
 	get_parent().add_child(bullet)
+	Global.stat_add("bullets_fired", 1)
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not anim:

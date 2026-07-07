@@ -54,7 +54,7 @@ offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="V" type="VBoxContainer" parent="Root/Panel"]
+[node name="Scroll" type="ScrollContainer" parent="Root/Panel"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -65,19 +65,25 @@ offset_right = -28.0
 offset_bottom = -28.0
 grow_horizontal = 2
 grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="V" type="VBoxContainer" parent="Root/Panel/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 theme_override_constants/separation = 18
 
-[node name="MasterRow" type="HBoxContainer" parent="Root/Panel/V"]
+[node name="MasterRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Label" type="Label" parent="Root/Panel/V/MasterRow"]
+[node name="Label" type="Label" parent="Root/Panel/Scroll/V/MasterRow"]
 custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Master volume"
 
-[node name="Slider" type="HSlider" parent="Root/Panel/V/MasterRow"]
+[node name="Slider" type="HSlider" parent="Root/Panel/Scroll/V/MasterRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
@@ -85,17 +91,17 @@ max_value = 1.0
 step = 0.01
 value = 0.8
 
-[node name="SFXRow" type="HBoxContainer" parent="Root/Panel/V"]
+[node name="SFXRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Label" type="Label" parent="Root/Panel/V/SFXRow"]
+[node name="Label" type="Label" parent="Root/Panel/Scroll/V/SFXRow"]
 custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "SFX volume"
 
-[node name="Slider" type="HSlider" parent="Root/Panel/V/SFXRow"]
+[node name="Slider" type="HSlider" parent="Root/Panel/Scroll/V/SFXRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
@@ -103,60 +109,60 @@ max_value = 1.0
 step = 0.01
 value = 0.8
 
-[node name="ThemeRow" type="HBoxContainer" parent="Root/Panel/V"]
+[node name="ThemeRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Label" type="Label" parent="Root/Panel/V/ThemeRow"]
+[node name="Label" type="Label" parent="Root/Panel/Scroll/V/ThemeRow"]
 custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "UI theme"
 
-[node name="Option" type="OptionButton" parent="Root/Panel/V/ThemeRow"]
+[node name="Option" type="OptionButton" parent="Root/Panel/Scroll/V/ThemeRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="DebugRow" type="HBoxContainer" parent="Root/Panel/V"]
+[node name="DebugRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Label" type="Label" parent="Root/Panel/V/DebugRow"]
+[node name="Label" type="Label" parent="Root/Panel/Scroll/V/DebugRow"]
 custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Show debug overlay"
 
-[node name="CheckBox" type="CheckBox" parent="Root/Panel/V/DebugRow"]
+[node name="CheckBox" type="CheckBox" parent="Root/Panel/Scroll/V/DebugRow"]
 layout_mode = 2
 
-[node name="PrimitivesRow" type="HBoxContainer" parent="Root/Panel/V"]
+[node name="PrimitivesRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Label" type="Label" parent="Root/Panel/V/PrimitivesRow"]
+[node name="Label" type="Label" parent="Root/Panel/Scroll/V/PrimitivesRow"]
 custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Force primitives"
 
-[node name="CheckBox" type="CheckBox" parent="Root/Panel/V/PrimitivesRow"]
+[node name="CheckBox" type="CheckBox" parent="Root/Panel/Scroll/V/PrimitivesRow"]
 layout_mode = 2
 
-[node name="UnlockAllRow" type="HBoxContainer" parent="Root/Panel/V"]
+[node name="UnlockAllRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]
 layout_mode = 2
 theme_override_constants/separation = 14
 
-[node name="Label" type="Label" parent="Root/Panel/V/UnlockAllRow"]
+[node name="Label" type="Label" parent="Root/Panel/Scroll/V/UnlockAllRow"]
 custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "Cheat: unlock all"
 
-[node name="CheckBox" type="CheckBox" parent="Root/Panel/V/UnlockAllRow"]
+[node name="CheckBox" type="CheckBox" parent="Root/Panel/Scroll/V/UnlockAllRow"]
 layout_mode = 2
 
-[node name="ResetButton" type="Button" parent="Root/Panel/V"]
+[node name="ResetButton" type="Button" parent="Root/Panel/Scroll/V"]
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
 text = "Reset all progress"

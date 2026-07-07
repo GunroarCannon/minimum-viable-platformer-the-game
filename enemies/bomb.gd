@@ -56,25 +56,56 @@ func _explode() -> void:
 	var dist = global_position.distance_to(player.global_position)
 	if dist <= explosion_radius:
 		if player.has_method("die"):
-			player.die()
+			player.die(false, "a bomb")
 	
-	var poof = CPUParticles2D.new()
-	poof.emitting = true
-	poof.one_shot = true
-	poof.amount = 60
-	poof.lifetime = 0.5
-	poof.explosiveness = 1.0
-	poof.spread = 180.0
-	poof.initial_velocity_min = 200.0
-	poof.initial_velocity_max = 600.0
-	poof.scale_amount_min = 10.0
-	poof.scale_amount_max = 40.0
-	poof.color = Color(1.0, 0.4, 0.0)
-	
-	get_parent().add_child(poof)
-	poof.global_position = global_position
-	
+	if Global.is_unlocked("sprite_explosion"):
+		_spawn_sprite_explosion()
+	else:
+		var poof = CPUParticles2D.new()
+		poof.emitting = true
+		poof.one_shot = true
+		poof.amount = 60
+		poof.lifetime = 0.5
+		poof.explosiveness = 1.0
+		poof.spread = 180.0
+		poof.initial_velocity_min = 200.0
+		poof.initial_velocity_max = 600.0
+		poof.scale_amount_min = 10.0
+		poof.scale_amount_max = 40.0
+		poof.color = Color(1.0, 0.4, 0.0)
+		get_parent().add_child(poof)
+		poof.global_position = global_position
+
 	queue_free()
+
+func _spawn_sprite_explosion() -> void:
+	var folder := "res://assets/animations/%s/" % (["explosion", "explosion2"][randi() % 2])
+	var frames := SpriteFrames.new()
+	frames.add_animation("boom")
+	frames.set_animation_loop("boom", false)
+	frames.set_animation_speed("boom", 24.0)
+	var dir := DirAccess.open(folder)
+	if dir == null: return
+	var files: Array = []
+	dir.list_dir_begin()
+	while true:
+		var f := dir.get_next()
+		if f == "": break
+		if f.ends_with(".png"): files.append(f)
+	dir.list_dir_end()
+	files.sort_custom(func(a, b):
+		return int(a.get_basename()) < int(b.get_basename())
+	)
+	for f in files:
+		var tex: Texture2D = load(folder + f)
+		if tex: frames.add_frame("boom", tex)
+	var sprite := AnimatedSprite2D.new()
+	sprite.sprite_frames = frames
+	sprite.global_position = global_position
+	sprite.scale = Vector2(4.0, 4.0)
+	get_parent().add_child(sprite)
+	sprite.play("boom")
+	sprite.animation_finished.connect(sprite.queue_free)
 
 func _draw() -> void:
 	# Bomb body

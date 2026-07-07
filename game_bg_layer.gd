@@ -8,6 +8,8 @@ extends Control
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	resized.connect(queue_redraw)
+	Global.sky_changed.connect(queue_redraw)
+	Global.palette_changed.connect(queue_redraw)
 
 func _draw() -> void:
 	match layer_type:
@@ -18,11 +20,31 @@ func _draw() -> void:
 
 func _draw_sky() -> void:
 	var sz = size
-	# Two-band warm gradient — peach top fading to deeper peach near the floor.
-	var top = Color(1.00, 0.93, 0.80)
-	var mid = Color(0.99, 0.83, 0.62)
-	var bot = Color(0.97, 0.74, 0.50)
-	var bands = 28
+	var top: Color
+	var mid: Color
+	var bot: Color
+	match Global.sky_color:
+		"sunset":
+			top = Color(1.00, 0.60, 0.30)
+			mid = Color(0.95, 0.42, 0.32)
+			bot = Color(0.78, 0.30, 0.48)
+		"night":
+			top = Color(0.04, 0.06, 0.18)
+			mid = Color(0.07, 0.10, 0.26)
+			bot = Color(0.10, 0.14, 0.30)
+		"dawn":
+			top = Color(0.72, 0.62, 0.90)
+			mid = Color(0.95, 0.72, 0.80)
+			bot = Color(1.00, 0.88, 0.68)
+		"overcast":
+			top = Color(0.68, 0.70, 0.74)
+			mid = Color(0.74, 0.76, 0.80)
+			bot = Color(0.80, 0.82, 0.85)
+		_:  # default — warm peach gradient
+			top = Color(1.00, 0.93, 0.80)
+			mid = Color(0.99, 0.83, 0.62)
+			bot = Color(0.97, 0.74, 0.50)
+	var bands := 28
 	for i in bands:
 		var t = float(i) / float(bands - 1)
 		var col: Color

@@ -65,7 +65,15 @@ func _on_hitbox_area_entered(area: Area2D) -> void:
 		# Player centre more than 30 px above our centre → overhead / head contact → no kill
 		if body.global_position.y < global_position.y - 30:
 			return
-		body.die()
+		body.die(false, _display_name())
+
+## Human-readable name used for "Killed by …" messages. Subclasses can override.
+func _display_name() -> String:
+	var s = get_script()
+	if s:
+		var stem = s.resource_path.get_file().get_basename()
+		return "a " + stem.replace("_", " ")
+	return "an enemy"
 
 ## Normal kill – poof particles. Pass torn=true to shatter into physics pieces.
 ## impact_vel is used to scatter pieces outward.
@@ -74,7 +82,11 @@ func die(torn: bool = false, impact_vel: Vector2 = Vector2.ZERO) -> void:
 	_is_dying = true
 
 	# Blood splat lives one level up so it survives our queue_free().
-	BloodSplat.apply(get_parent(), global_position, impact_vel)
+	# Bullets don't bleed — they're inert projectiles.
+	var script_res = get_script()
+	var is_bullet = script_res != null and script_res.resource_path.contains("bullet")
+	if not is_bullet:
+		BloodSplat.apply(get_parent(), global_position, impact_vel)
 
 	if torn and tears_on_death:
 		# Shatter into irregular physics polygons

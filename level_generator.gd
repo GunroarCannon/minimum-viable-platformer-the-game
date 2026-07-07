@@ -182,14 +182,38 @@ func _spawn_entity(id: String, world_pos: Vector2) -> void:
 # ─── TILE STRIP SPAWN ───────────────────────────────────────────────────
 
 ## Spawns ONE TileStrip representing a contiguous horizontal run of N tiles.
-## The strip's depth_tiles handles the "3 columns deep" we used to emit per #.
-func _spawn_strip(start_world: Vector2, length_tiles: int) -> void:
-	var strip = tile_strip_scene.instantiate()
+## Returns it so the caller can collect it for neighbour linking.
+func _spawn_strip(start_world: Vector2, length_tiles: int, is_elevated: bool = false) -> TileStrip:
+	var strip: TileStrip = tile_strip_scene.instantiate() as TileStrip
 	strip.tile_size = tile_size
 	strip.length_tiles = length_tiles
-	# strip local 0,0 = top-left corner of the surface row
 	strip.position = start_world - Vector2(tile_size.x * 0.5, tile_size.y * 0.5)
+	if is_elevated:
+		strip.no_foliage = true
 	add_child(strip)
+	return strip
+
+## After all strips are placed, find horizontally-adjacent strips at the same Y and
+## suppress the shared interior side outline.
+func _link_strip_neighbors(strips: Array) -> void:
+	var by_y: Dictionary = {}
+	for strip in strips:
+		if strip == null: continue
+		var y_key: int = roundi(strip.position.y)
+		if not by_y.has(y_key):
+			by_y[y_key] = []
+		by_y[y_key].append(strip)
+	for y_key in by_y:
+		var row: Array = by_y[y_key]
+		row.sort_custom(func(a, b): return a.position.x < b.position.x)
+		for i in range(row.size() - 1):
+			var ls: TileStrip = row[i]
+			var rs: TileStrip = row[i + 1]
+			if abs((ls.position.x + ls.get_world_width()) - rs.position.x) < 4.0:
+				ls.right_neighbor = true
+				rs.left_neighbor  = true
+				ls.refresh_visual()
+				rs.refresh_visual()
 
 
 func _spawn_spike(world_pos: Vector2) -> void:
@@ -245,13 +269,52 @@ func _build_active_template_indices() -> Array:
 
 # ─── MAIN GENERATION ────────────────────────────────────────────────────
 
+## Fixed seed used before the player unlocks procgen so runs are identical.
+const STARTER_SEED := 42024
+## Seed range so codes stay 4 chars in Global.SEED_ALPHABET (31^4 = 923521).
+const SEED_MAX := 923521
+
 func generate_level() -> void:
 	var rng = RandomNumberGenerator.new()
-	if current_seed == 0:
+	# Before procgen is unlocked, force the same starter seed every run so the
+	# player can learn the layout. After unlock, either use a saved seed or roll.
+	if not Global.is_unlocked("procgen"):
+		current_seed = STARTER_SEED
+		rng.seed = STARTER_SEED
+	elif current_seed == 0:
 		rng.randomize()
-		current_seed = rng.seed
+		current_seed = (int(abs(rng.seed)) % SEED_MAX)
+		rng.seed = current_seed
 	else:
 		rng.seed = current_seed
+
+	# Store seed so the library and UI can reference it.
+	print(current_seed)
+	Global.current_run_seed = current_seed
+	Global.stat_bucket("seeds_visited", str(current_seed), 1)
+
+	# Adaptive sky/palette drift (no-op unless "adaptive_sky" is unlocked).
+	var adaptive := Node.new()
+	adaptive.set_script(preload("res://adaptive_sky.gd"))
+	add_child(adaptive)
+
+	# Palette tint — affects every canvas item in the world, so palette swaps
+	# actually recolour the entire scene.
+	var mod := CanvasModulate.new()
+	mod.color = Global.palette_tint()
+	mod.add_to_group("palette_modulate")
+	add_child(mod)
+	Global.palette_changed.connect(func():
+		if mod:
+				mod.color = Global.palette_tint()
+	)
+
+	# Persistent blood mark canvas (rendered below hazards).
+	var blood_canvas = Node2D.new()
+	blood_canvas.set_script(preload("res://blood_canvas.gd"))
+	blood_canvas.z_index = -3
+	blood_canvas.add_to_group("blood_canvas")
+	add_child(blood_canvas)
 
 	# In-game background goes in BEFORE the UI so it sits visually behind.
 	add_child(bg_scene.instantiate())
@@ -267,6 +330,7 @@ func generate_level() -> void:
 	var next_y := 0
 	var spawn_pos := Vector2.ZERO
 	var lowest_y := -99999.0
+	var all_strips: Array = []
 
 	for i in range(level_width_blocks):
 		var tmpl_idx: int
@@ -309,7 +373,17 @@ func generate_level() -> void:
 						(next_x + run_start) * tile_size.x + tile_size.x * 0.5,
 						grid_y * tile_size.y + tile_size.y * 0.5
 					)
-					_spawn_strip(world_start, run_len)
+					# Detect elevated platform: if any column in this run has empty
+					# space in the row directly below, the strip is floating.
+					var is_elevated := false
+					if ty + 1 < block_h:
+						var next_row_str: String = pattern[ty + 1]
+						for xx in range(run_start, rx):
+							var nc: String = next_row_str[xx]
+							if nc == '.' or nc == ' ' or nc == 'a':
+								is_elevated = true
+								break
+					all_strips.append(_spawn_strip(world_start, run_len, is_elevated))
 					var strip_bottom := world_start.y + (3 * tile_size.y)
 					if strip_bottom > lowest_y: lowest_y = strip_bottom
 				elif ch_here == 's':
@@ -324,7 +398,7 @@ func generate_level() -> void:
 						spike_world.x,
 						grid_y * tile_size.y + tile_size.y * 0.5 + tile_size.y
 					)
-					_spawn_strip(strip_world, 1)
+					all_strips.append(_spawn_strip(strip_world, 1))
 					var sb := strip_world.y + (3 * tile_size.y)
 					if sb > lowest_y: lowest_y = sb
 					rx += 1
@@ -382,7 +456,10 @@ func generate_level() -> void:
 								floor_grid_y = y_offset + yy
 								break
 						if floor_grid_y != -1:
-							spawn_world.y = floor_grid_y * tile_size.y - tile_size.y * 0.5
+							# Snap bottom of shooter sprite to top of floor collision.
+							# Shooter rect spans -64..+64 from its position, so subtract
+							# one full tile height to seat it on the surface.
+							spawn_world.y = floor_grid_y * tile_size.y - tile_size.y
 					_spawn_entity(entity_id, spawn_world)
 
 		if i == 0:
@@ -399,6 +476,8 @@ func generate_level() -> void:
 				break
 		if right_solid_y != -1:
 			next_y = y_offset + right_solid_y
+
+	_link_strip_neighbors(all_strips)
 
 	var p = player_scene.instantiate()
 	p.position = spawn_pos

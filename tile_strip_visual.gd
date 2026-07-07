@@ -121,8 +121,17 @@ func _draw() -> void:
 		draw_colored_polygon(_grass_dark_poly, owner_strip._strip_color_grass_dark)
 		# 5) Inky outline along the top
 		draw_polyline(_outline_top, owner_strip._strip_color_ink, 3.0, true)
-		# 6) Foliage tufts when unlocked.
-		if Global.is_unlocked("foliage"):
+		# 6) Side and bottom outlines — skipped on edges that touch another strip.
+		var ink = owner_strip._strip_color_ink
+		var left_y  = _top_poly[0].y
+		var right_y = _top_poly[_top_poly.size() - 1].y
+		if not owner_strip.left_neighbor:
+			draw_line(Vector2(0.0, left_y), Vector2(0.0, depth), ink, 2.5, true)
+		if not owner_strip.right_neighbor:
+			draw_line(Vector2(w, right_y), Vector2(w, depth), ink, 2.5, true)
+		draw_line(Vector2(0.0, depth), Vector2(w, depth), ink, 2.5, true)
+		# 7) Foliage tufts when unlocked and strip is not floating in air.
+		if Global.is_unlocked("foliage") and not owner_strip.no_foliage:
 			_draw_foliage(w)
 
 	# Debug rect
