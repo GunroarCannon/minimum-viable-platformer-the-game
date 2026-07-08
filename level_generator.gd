@@ -374,14 +374,25 @@ func generate_level() -> void:
 						(next_x + run_start) * tile_size.x + tile_size.x * 0.5,
 						grid_y * tile_size.y + tile_size.y * 0.5
 					)
-					# Detect elevated platform: if any column in this run has empty
-					# space in the row directly below, the strip is floating.
+					# Suppress foliage on anything that isn't the block's true
+					# ground row. Two triggers:
+					#   1) Row directly below has empty space under the run
+					#      (traditional floating platform).
+					#   2) A deeper row in the block contains a '#' — meaning
+					#      this strip is a stair step or upper tier, not the
+					#      ground the sky sits against. Foliage tufts on those
+					#      poke up into the sky and read as "grass on the sky".
 					var is_elevated := false
 					if ty + 1 < block_h:
 						var next_row_str: String = pattern[ty + 1]
 						for xx in range(run_start, rx):
 							var nc: String = next_row_str[xx]
 							if nc == '.' or nc == ' ' or nc == 'a':
+								is_elevated = true
+								break
+					if not is_elevated:
+						for deeper_ty in range(ty + 1, block_h):
+							if pattern[deeper_ty].find('#') != -1:
 								is_elevated = true
 								break
 					all_strips.append(_spawn_strip(world_start, run_len, is_elevated))

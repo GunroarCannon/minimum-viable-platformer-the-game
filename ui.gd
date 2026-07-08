@@ -3,7 +3,9 @@ class_name GameOverUI
 
 # Two modes:
 #   PRE-UI       (no "ui" feature unlocked yet) — bare prompt to buy UI.
-#   POST-UI      (ui unlocked) — proper game-over screen with shop/menu links.
+#   POST-UI      (ui unlocked) — compact game-over card with row-laid-out buttons,
+#                stats grid (distance, best distance, best combo, tokens), and
+#                copyable seed code.
 
 @onready var dim: ColorRect      = $Dim
 @onready var center: CenterContainer = $Center
@@ -19,14 +21,43 @@ class_name GameOverUI
 @onready var btn_exit: Button     = $Center/ScrollWrap/Box/Buttons/ExitButton
 @onready var buttons_box: VBoxContainer = $Center/ScrollWrap/Box/Buttons
 
-## Dynamically created seed label + save button (only when library is unlocked).
-var _seed_label: Label = null
-var _save_btn: Button = null
-var _replay_btn: Button = null
-var _highscore_lbl: Label = null
+## Dynamically created inline cause row ("💀 killed by …") — small, tucked under
+## the title so it doesn't own its own vertical band.
+var _cause_row: HBoxContainer = null
 
-## Dynamically created "Killed by …" label under the title.
-var _cause_label: Label = null
+## Stats card — a 2-column icon+value grid tucked between the header and the
+## button block. All the end-of-run numbers live here.
+const StatIconScene := preload("res://stat_icon.gd")
+var _stats_card: PanelContainer = null
+var _stats_grid: GridContainer = null
+var _stat_val_distance: Label = null
+var _stat_val_best_dist: Label = null
+var _stat_val_combo: Label = null
+var _stat_val_tokens: Label = null
+var _stat_row_distance: HBoxContainer = null
+var _stat_row_best_dist: HBoxContainer = null
+var _stat_row_combo: HBoxContainer = null
+var _stat_row_tokens: HBoxContainer = null
+
+## Seed strip: label + code + copy button. Its own row so the copy button can
+## sit inline with the code without upsetting the 2-col stats grid.
+var _seed_strip: PanelContainer = null
+var _seed_code_label: Label = null
+var _seed_copy_btn: Button = null
+var _seed_best_label: Label = null
+
+## Replay + favourite buttons (library-gated).
+var _replay_btn: Button = null
+var _save_btn: Button = null
+
+## Row containers used by the compact button layout — kept around so we can
+## reparent buttons between rows without leaking old containers on repeated
+## show_game_over calls.
+var _btn_row_primary: HBoxContainer = null   # Replay / Retry / Shop
+var _btn_row_secondary: HBoxContainer = null # Menu / Exit
+
+## Ephemeral "Copied!" toast anchored to the copy button.
+var _toast: Label = null
 
 func _ready() -> void:
 	visible = false
@@ -39,98 +70,460 @@ func _ready() -> void:
 func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 	visible = true
 	var has_ui := Global.is_unlocked("ui")
+
+	# Sizing: let the ScrollWrap collapse to its content height so there's no
+	# empty band under the buttons. Vertical scrolling is disabled — if content
+	# overflows a tiny viewport we accept clipping over the previous "500 px of
+	# blank space beneath the buttons" look. Horizontal scroll stays disabled.
+	var vp := get_viewport().get_visible_rect().size
+	var wrap: ScrollContainer = $Center/ScrollWrap
+	var side_pad: float = max(24.0, vp.x * 0.04)
+	var target_w: float = clamp(vp.x - side_pad * 2.0, 320.0, 720.0)
+	wrap.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	wrap.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	wrap.custom_minimum_size = Vector2(target_w, 0)
+	# Scroll is disabled, so clipping only ends up eating the hover-scale and
+	# jiggle animations on our buttons. Turn it off explicitly.
+	wrap.clip_contents = false
+	var inner_box: VBoxContainer = $Center/ScrollWrap/Box
+	inner_box.custom_minimum_size = Vector2(target_w - 40.0, 0)
+	inner_box.add_theme_constant_override("separation", 10)
+
+	# Compact title — smaller than before so the card doesn't lead with a giant
+	# banner. On narrow screens it scales down further so the header + cause row
+	# never wrap.
+	title_label.add_theme_font_size_override("font_size", int(clamp(vp.x * 0.06, 40, 64)))
+	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	tokens_earned_label.visible = not has_ui
+	tokens_earned_label.add_theme_font_size_override("font_size", 34)
+	tokens_earned_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
+	hint_label.add_theme_font_size_override("font_size", int(clamp(vp.x * 0.028, 18, 22)))
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+
 	if has_ui:
 		_configure_post_ui(tokens_awarded, distance_m)
 	else:
 		_configure_pre_ui(tokens_awarded)
 
-	# Bump the smaller labels so they stay readable on tight/mobile viewports.
-	# The .tscn defaults are low (~14-18px); force overrides here.
-	tokens_earned_label.add_theme_font_size_override("font_size", 32)
-	hint_label.add_theme_font_size_override("font_size", 22)
-	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_update_cause_row()
 
-	_update_cause_label()
+	# Stats card + seed strip are only meaningful post-UI.
+	if has_ui:
+		_ensure_stats_card()
+		_populate_stats_card(tokens_awarded, distance_m, target_w)
+		_ensure_seed_strip()
+		_populate_seed_strip()
+		if _stats_card: _stats_card.visible = true
+	else:
+		if _stats_card: _stats_card.visible = false
+		if _seed_strip: _seed_strip.visible = false
 
-	# Show seed info when library is unlocked.
-	_update_library_widgets()
+	_style_buttons(target_w, has_ui)
 
 	UITheme.apply_current(self)
 	_play_in_tween()
 
-func _update_cause_label() -> void:
+# ─── STATS CARD ────────────────────────────────────────────────────────
+
+## Build the stats-card panel once and cache references to its value labels.
+func _ensure_stats_card() -> void:
+	if _stats_card and is_instance_valid(_stats_card):
+		return
+	_stats_card = PanelContainer.new()
+	_stats_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(1.0, 0.94, 0.80, 0.85)
+	sb.border_color = Color(0.42, 0.30, 0.18, 0.6)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(14)
+	sb.content_margin_left = 16
+	sb.content_margin_right = 16
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 12
+	_stats_card.add_theme_stylebox_override("panel", sb)
+
+	_stats_grid = GridContainer.new()
+	_stats_grid.columns = 2
+	_stats_grid.add_theme_constant_override("h_separation", 20)
+	_stats_grid.add_theme_constant_override("v_separation", 8)
+	_stats_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stats_card.add_child(_stats_grid)
+
+	_stat_val_distance  = _add_stat_row(StatIconScene.Kind.FLAG,   "0 m")
+	_stat_val_best_dist = _add_stat_row(StatIconScene.Kind.TROPHY, "best 0 m")
+	_stat_val_combo     = _add_stat_row(StatIconScene.Kind.FIRE,   "no combo")
+	_stat_val_tokens    = _add_stat_row(StatIconScene.Kind.STAR,   "+0 ★")
+
+	_stat_row_distance  = _stat_val_distance.get_parent()
+	_stat_row_best_dist = _stat_val_best_dist.get_parent()
+	_stat_row_combo     = _stat_val_combo.get_parent()
+	_stat_row_tokens    = _stat_val_tokens.get_parent()
+
+	# Card sits directly after the cause row (or title if no cause) and before
+	# the seed strip / hint / buttons.
+	var target_idx: int = hint_label.get_index()
+	box.add_child(_stats_card)
+	box.move_child(_stats_card, target_idx)
+
+func _add_stat_row(kind: int, initial_text: String) -> Label:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var icon := Control.new()
+	icon.set_script(StatIconScene)
+	icon.set("kind", kind)
+	icon.custom_minimum_size = Vector2(32, 32)
+	row.add_child(icon)
+
+	var lbl := Label.new()
+	lbl.text = initial_text
+	lbl.add_theme_color_override("font_color", Color(0.15, 0.10, 0.06))
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(lbl)
+
+	_stats_grid.add_child(row)
+	return lbl
+
+func _populate_stats_card(tokens_awarded: int, distance_m: int, panel_w: float) -> void:
+	if _stats_card == null: return
+	# Narrow phones drop the grid to a single column so nothing truncates.
+	_stats_grid.columns = 2 if panel_w >= 460.0 else 1
+
+	_stat_val_distance.text  = "%d m" % distance_m
+	_stat_val_best_dist.text = "best %d m" % Global.best_distance
+	_stat_val_tokens.text    = "+%d ★" % tokens_awarded
+
+	var best_combo: int = int(Global.stats.get("longest_combo", 0))
+	if best_combo > 0:
+		_stat_val_combo.text = "x%d combo" % best_combo
+		_stat_row_combo.visible = true
+	else:
+		# No combos ever recorded — hide the row to save vertical space.
+		_stat_row_combo.visible = false
+
+# ─── SEED STRIP ────────────────────────────────────────────────────────
+
+## Seed code + copy button + best-on-seed hint. Lives in its own panel so the
+## copy button can sit inline without perturbing the stats grid.
+func _ensure_seed_strip() -> void:
+	if _seed_strip and is_instance_valid(_seed_strip):
+		return
+	_seed_strip = PanelContainer.new()
+	_seed_strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.98, 0.90, 0.72, 0.75)
+	sb.border_color = Color(0.42, 0.30, 0.18, 0.5)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(12)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	_seed_strip.add_theme_stylebox_override("panel", sb)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_seed_strip.add_child(row)
+
+	var hash_icon := Control.new()
+	hash_icon.set_script(StatIconScene)
+	hash_icon.set("kind", StatIconScene.Kind.HASH)
+	hash_icon.custom_minimum_size = Vector2(28, 28)
+	row.add_child(hash_icon)
+
+	_seed_code_label = Label.new()
+	_seed_code_label.add_theme_font_size_override("font_size", 24)
+	_seed_code_label.add_theme_color_override("font_color", Color(0.15, 0.10, 0.06))
+	_seed_code_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(_seed_code_label)
+
+	_seed_best_label = Label.new()
+	_seed_best_label.add_theme_font_size_override("font_size", 18)
+	_seed_best_label.add_theme_color_override("font_color", Color(0.28, 0.20, 0.10))
+	_seed_best_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_seed_best_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_seed_best_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_child(_seed_best_label)
+
+	_seed_copy_btn = Button.new()
+	_seed_copy_btn.text = "Copy"
+	_seed_copy_btn.custom_minimum_size = Vector2(96, 40)
+	_seed_copy_btn.add_theme_font_size_override("font_size", 18)
+	_seed_copy_btn.pressed.connect(_on_copy_seed)
+	row.add_child(_seed_copy_btn)
+
+	# Insert seed strip right after the stats card.
+	var stats_idx: int = _stats_card.get_index() if _stats_card else hint_label.get_index()
+	box.add_child(_seed_strip)
+	box.move_child(_seed_strip, stats_idx + 1)
+
+	# Toast overlay ("Copied!") — parented to the CanvasLayer so it isn't
+	# force-sized by the PanelContainer; positioned above the copy button in
+	# _show_toast.
+	_toast = Label.new()
+	_toast.text = "Copied!"
+	_toast.add_theme_font_size_override("font_size", 18)
+	_toast.add_theme_color_override("font_color", Color(1.0, 0.98, 0.85))
+	_toast.add_theme_color_override("font_outline_color", Color(0.15, 0.05, 0.08))
+	_toast.add_theme_constant_override("outline_size", 6)
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_toast.modulate.a = 0.0
+	_toast.z_index = 200
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_toast)
+
+func _populate_seed_strip() -> void:
+	if _seed_strip == null: return
+	if not Global.is_unlocked("level_library") or Global.current_run_seed == 0:
+		_seed_strip.visible = false
+		return
+	_seed_strip.visible = true
+	_seed_code_label.text = "Seed  %s" % Global.seed_to_code(Global.current_run_seed)
+	var best_on_seed := _best_for_current_seed()
+	if best_on_seed > 0:
+		_seed_best_label.text = "best on seed  %d m" % best_on_seed
+		_seed_best_label.visible = true
+	else:
+		_seed_best_label.visible = false
+
+func _on_copy_seed() -> void:
+	if Global.current_run_seed == 0: return
+	DisplayServer.clipboard_set(Global.seed_to_code(Global.current_run_seed))
+	_show_toast()
+
+func _show_toast() -> void:
+	if _toast == null or _seed_copy_btn == null: return
+	_toast.reset_size()
+	# Pin toast to global screen coords of the copy button.
+	var btn_rect: Rect2 = _seed_copy_btn.get_global_rect()
+	_toast.position = Vector2(
+		btn_rect.position.x + btn_rect.size.x * 0.5 - _toast.size.x * 0.5,
+		btn_rect.position.y - _toast.size.y - 8.0)
+	_toast.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(_toast, "modulate:a", 1.0, 0.12)
+	tw.tween_interval(0.9)
+	tw.tween_property(_toast, "modulate:a", 0.0, 0.30)
+
+# ─── CAUSE ROW ─────────────────────────────────────────────────────────
+
+func _update_cause_row() -> void:
 	var cause: String = Global.last_death_cause
 	if cause == "":
-		if _cause_label:
-			_cause_label.visible = false
+		if _cause_row: _cause_row.visible = false
 		return
-	if _cause_label == null:
-		_cause_label = Label.new()
-		_cause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_cause_label.add_theme_font_size_override("font_size", 24)
-		box.add_child(_cause_label)
-		# Sit just under the title (index 0).
-		box.move_child(_cause_label, 1)
-	_cause_label.visible = true
-	_cause_label.text = "Killed by %s" % cause
+	if _cause_row == null:
+		_cause_row = HBoxContainer.new()
+		_cause_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		_cause_row.add_theme_constant_override("separation", 8)
+		var icon := Control.new()
+		icon.set_script(StatIconScene)
+		icon.set("kind", StatIconScene.Kind.SKULL)
+		icon.custom_minimum_size = Vector2(28, 28)
+		_cause_row.add_child(icon)
+		var lbl := Label.new()
+		lbl.name = "CauseText"
+		lbl.add_theme_font_size_override("font_size", 22)
+		lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.add_theme_color_override("font_color", Color(0.20, 0.12, 0.08))
+		_cause_row.add_child(lbl)
+		box.add_child(_cause_row)
+		# Sit just under the title.
+		box.move_child(_cause_row, 1)
+	_cause_row.visible = true
+	var lbl2: Label = _cause_row.get_node("CauseText")
+	lbl2.text = "killed by %s" % cause
 
-func _update_library_widgets() -> void:
+# ─── BUTTONS ───────────────────────────────────────────────────────────
+
+## Row layout: primary actions (Replay/Retry/Shop) share a row, secondary
+## (Menu/Exit) share another. Pre-UI mode swaps in the giant BuyUI button.
+func _style_buttons(target_w: float, has_ui: bool) -> void:
+	# Give buttons_box zero vertical footprint of its own — the row HBoxes take
+	# over sizing. Bump inter-row separation so rows don't cram together.
+	buttons_box.add_theme_constant_override("separation", 10)
+	# Buttons box must fill its parent's width so rows can spread horizontally.
+	buttons_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	_ensure_button_rows()
+
+	# Reset icon insets stamped in previous shows so we can restyle cleanly.
+	_reset_button_icons()
+
+	if not has_ui:
+		# Pre-UI: stack a single full-width BuyUI button + Retry + Exit. No shop
+		# or menu button. Keep them in a single column since there's only three.
+		_move_button(btn_buy_ui, buttons_box)
+		_move_button(btn_retry,  buttons_box)
+		_move_button(btn_exit,   buttons_box)
+		_hide_button(btn_shop)
+		_hide_button(btn_menu)
+		if _replay_btn: _replay_btn.visible = false
+		# Row containers unused in this mode.
+		_btn_row_primary.visible = false
+		_btn_row_secondary.visible = false
+		_style_single_button(btn_buy_ui,  StatIconScene.Kind.STAR,  target_w * 0.9, 64)
+		_style_single_button(btn_retry,   StatIconScene.Kind.REDO,  target_w * 0.9, 60)
+		_style_single_button(btn_exit,    StatIconScene.Kind.DOOR,  target_w * 0.9, 60)
+		return
+
+	# Post-UI: build the button rows.
+	_hide_button(btn_buy_ui)
+	_btn_row_primary.visible = true
+	_btn_row_secondary.visible = true
+
+	# Row 1: Replay (if library) + Retry + Shop
+	_ensure_replay_btn()
+	if _replay_btn and Global.is_unlocked("level_library"):
+		_move_button(_replay_btn, _btn_row_primary)
+		_replay_btn.visible = true
+	elif _replay_btn:
+		_replay_btn.visible = false
+	_move_button(btn_retry, _btn_row_primary)
+	_move_button(btn_shop,  _btn_row_primary)
+
+	# Row 2: Menu + Exit
+	_move_button(btn_menu, _btn_row_secondary)
+	_move_button(btn_exit, _btn_row_secondary)
+
+	# Style each button for row use — small enough that 3 fit per row.
+	var row_btn_h: int = 56
+	var row_btn_fs: int = 20
+	var row_btn_min_w: int = int(clamp(target_w / 3.4, 140, 220))
+	if _replay_btn and _replay_btn.visible:
+		_style_row_button(_replay_btn, StatIconScene.Kind.REDO,  row_btn_min_w, row_btn_h, row_btn_fs, "Replay")
+		# Retry becomes "New" now that Replay owns the "same seed" action.
+		_style_row_button(btn_retry, StatIconScene.Kind.DICE, row_btn_min_w, row_btn_h, row_btn_fs, "New")
+	else:
+		# Without Replay, Retry keeps its "Run again / New Level" label.
+		var retry_kind: int = StatIconScene.Kind.DICE if Global.is_unlocked("level_library") else StatIconScene.Kind.REDO
+		_style_row_button(btn_retry, retry_kind, row_btn_min_w, row_btn_h, row_btn_fs, btn_retry.text.strip_edges())
+	_style_row_button(btn_shop, StatIconScene.Kind.BAG, row_btn_min_w, row_btn_h, row_btn_fs, "Shop (%d ★)" % Global.tokens)
+
+	var sec_min_w: int = int(clamp(target_w / 2.3, 180, 320))
+	_style_row_button(btn_menu, StatIconScene.Kind.HOME, sec_min_w, 52, 20, "Menu")
+	_style_row_button(btn_exit, StatIconScene.Kind.DOOR, sec_min_w, 52, 20, "Exit")
+
+	# Favourite button — full width under the secondary row (library-gated).
+	_ensure_save_button()
+	if _save_btn:
+		_move_button(_save_btn, buttons_box)
+		_style_row_button(_save_btn, StatIconScene.Kind.STAR, int(target_w * 0.9), 52, 20, _save_btn.text.strip_edges())
+
+func _ensure_button_rows() -> void:
+	if _btn_row_primary == null or not is_instance_valid(_btn_row_primary):
+		_btn_row_primary = HBoxContainer.new()
+		_btn_row_primary.add_theme_constant_override("separation", 10)
+		_btn_row_primary.alignment = BoxContainer.ALIGNMENT_CENTER
+		_btn_row_primary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		buttons_box.add_child(_btn_row_primary)
+	if _btn_row_secondary == null or not is_instance_valid(_btn_row_secondary):
+		_btn_row_secondary = HBoxContainer.new()
+		_btn_row_secondary.add_theme_constant_override("separation", 10)
+		_btn_row_secondary.alignment = BoxContainer.ALIGNMENT_CENTER
+		_btn_row_secondary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		buttons_box.add_child(_btn_row_secondary)
+	# Ensure rows come before the favourite button (added later).
+	buttons_box.move_child(_btn_row_primary,   0)
+	buttons_box.move_child(_btn_row_secondary, 1)
+
+## Reparent a button to `target_parent`. Keeps signal connections intact.
+func _move_button(btn: Button, target_parent: Node) -> void:
+	if btn == null: return
+	btn.visible = true
+	if btn.get_parent() == target_parent: return
+	if btn.get_parent(): btn.get_parent().remove_child(btn)
+	target_parent.add_child(btn)
+
+func _hide_button(btn: Button) -> void:
+	if btn: btn.visible = false
+
+## Clear cached icon so we can restyle labels/sizes across mode switches.
+## Existing icon children are also freed so we don't stack duplicates.
+func _reset_button_icons() -> void:
+	for b in [btn_buy_ui, btn_retry, btn_shop, btn_menu, btn_exit, _replay_btn, _save_btn]:
+		if b == null: continue
+		if b.has_meta("ui_icon_node"):
+			var old = b.get_meta("ui_icon_node")
+			if old and is_instance_valid(old):
+				old.queue_free()
+			b.remove_meta("ui_icon_node")
+
+func _style_single_button(btn: Button, kind: int, min_w: float, h: int) -> void:
+	btn.custom_minimum_size = Vector2(min_w, h)
+	btn.add_theme_font_size_override("font_size", 24)
+	_attach_button_icon(btn, kind, 28, 20)
+
+func _style_row_button(btn: Button, kind: int, min_w: int, h: int, fs: int, label_text: String) -> void:
+	btn.custom_minimum_size = Vector2(min_w, h)
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.add_theme_font_size_override("font_size", fs)
+	btn.text = "   %s" % label_text
+	_attach_button_icon(btn, kind, 22, 14)
+
+## Absolutely-position a small icon on the left of the button. The button's
+## text is prefixed with spaces so it doesn't collide with the icon.
+func _attach_button_icon(btn: Button, kind: int, icon_size: int, inset_x: float) -> void:
+	if btn == null: return
+	var icon := Control.new()
+	icon.set_script(StatIconScene)
+	icon.set("kind", kind)
+	icon.custom_minimum_size = Vector2(icon_size, icon_size)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.anchor_top = 0.5
+	icon.anchor_bottom = 0.5
+	icon.offset_top = -icon_size * 0.5
+	icon.offset_bottom = icon_size * 0.5
+	icon.offset_left = inset_x
+	icon.offset_right = inset_x + icon_size
+	btn.add_child(icon)
+	btn.set_meta("ui_icon_node", icon)
+
+# ─── DYNAMIC BUTTONS (library-gated) ────────────────────────────────────
+
+func _ensure_replay_btn() -> void:
 	if not Global.is_unlocked("level_library"):
-		if _seed_label: _seed_label.queue_free(); _seed_label = null
-		if _save_btn:   _save_btn.queue_free();   _save_btn = null
-		if _replay_btn: _replay_btn.queue_free(); _replay_btn = null
-		if _highscore_lbl: _highscore_lbl.queue_free(); _highscore_lbl = null
+		if _replay_btn:
+			_replay_btn.visible = false
 		return
-
-	if _seed_label == null:
-		_seed_label = Label.new()
-		_seed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_seed_label.add_theme_font_size_override("font_size", 22)
-		box.add_child(_seed_label)
-		box.move_child(_seed_label, box.get_child_count() - 2)  # before Buttons
-
-	_seed_label.text = "Seed:  %s" % Global.seed_to_code(Global.current_run_seed)
-
-	# Replay-same-level button — sits at the TOP of the buttons stack.
-	if _replay_btn == null:
+	if _replay_btn == null or not is_instance_valid(_replay_btn):
 		_replay_btn = Button.new()
-		_replay_btn.text = "↻  Replay this level"
-		_replay_btn.custom_minimum_size = Vector2(360, 60)
 		_replay_btn.pressed.connect(_on_replay_same)
-		buttons_box.add_child(_replay_btn)
-		buttons_box.move_child(_replay_btn, 0)
+		# Row parent is assigned in _style_buttons.
 
-	# Highscore label — sits directly under replay.
-	if _highscore_lbl == null:
-		_highscore_lbl = Label.new()
-		_highscore_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_highscore_lbl.add_theme_font_size_override("font_size", 22)
-		buttons_box.add_child(_highscore_lbl)
-		buttons_box.move_child(_highscore_lbl, 1)
-	var best := _best_for_current_seed()
-	_highscore_lbl.text = "Best on this seed:  %d m" % best
-
-	# Favourite button — moved to the BOTTOM of the box, not the top.
-	if _save_btn == null:
+func _ensure_save_button() -> void:
+	if not Global.is_unlocked("level_library"):
+		if _save_btn:
+			_save_btn.queue_free()
+			_save_btn = null
+		return
+	if _save_btn == null or not is_instance_valid(_save_btn):
 		_save_btn = Button.new()
 		_save_btn.pressed.connect(_on_favourite_level)
-		box.add_child(_save_btn)  # ends up as last child by default
-	box.move_child(_save_btn, box.get_child_count() - 1)
-
+	# Update label based on favourite state.
 	var already_fav := false
 	for entry in Global.level_library:
 		if int(entry.get("seed", 0)) == Global.current_run_seed:
 			if bool(entry.get("favorite", false)):
 				already_fav = true
 			break
-	_save_btn.text = "★  Favourited!" if already_fav else "★  Favourite this level"
+	_save_btn.text = "Favourited!" if already_fav else "Favourite this level"
 	_save_btn.disabled = already_fav
 
 func _best_for_current_seed() -> int:
 	for entry in Global.level_library:
 		if int(entry.get("seed", 0)) == Global.current_run_seed:
 			return int(entry.get("distance", 0))
-	return Global.last_run_distance
+	return 0
 
 func _on_replay_same() -> void:
 	var level_gen = load("res://level_generator.gd")
@@ -146,7 +539,7 @@ func _configure_pre_ui(tokens_awarded: int) -> void:
 	btn_buy_ui.text = "Buy UI (1 ★)"
 	btn_buy_ui.disabled = Global.tokens < 1
 	btn_retry.visible = true
-	btn_retry.text = "New Level" if Global.is_unlocked("level_library") else "Run again"
+	btn_retry.text = "Run again"
 	btn_shop.visible = false
 	btn_menu.visible = false
 	btn_exit.visible = true
@@ -157,7 +550,7 @@ func _configure_post_ui(tokens_awarded: int, distance_m: int) -> void:
 	hint_label.text = "Spend tokens in the shop to unlock more."
 	btn_buy_ui.visible = false
 	btn_retry.visible = true
-	btn_retry.text = "New Level" if Global.is_unlocked("level_library") else "Run again"
+	btn_retry.text = "New" if Global.is_unlocked("level_library") else "Run again"
 	btn_shop.visible = true
 	btn_shop.text = "Shop (%d ★)" % Global.tokens
 	btn_menu.visible = true
@@ -172,6 +565,46 @@ func _play_in_tween() -> void:
 	tw.tween_property(dim, "modulate:a", 1.0, 0.25)
 	tw.parallel().tween_property(box, "modulate:a", 1.0, 0.30)
 	tw.parallel().tween_property(box, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	call_deferred("_juice_primary_button")
+
+## The primary action ("Replay" if library is unlocked, else "Retry" / "Run again",
+## or "Buy UI" in pre-UI mode) gets a little grow + jiggle so the eye lands on it,
+## and settles at a small tilt for character.
+func _juice_primary_button() -> void:
+	var btn: Button = _pick_primary_button()
+	if btn == null or not is_instance_valid(btn):
+		return
+	# Center the pivot so scale/rotate happens around the button's middle.
+	btn.pivot_offset = btn.size * 0.5
+	btn.scale = Vector2(0.6, 0.6)
+	btn.rotation = 0.0
+	# Draw the jiggling button above siblings and unclip ancestors so the
+	# scaled/rotated corners aren't chopped off by the row container or the
+	# ScrollWrap around them.
+	btn.z_index = 5
+	UITheme._lift_button_visibility(btn, true)
+	var tw := create_tween()
+	# Pop up to slightly-larger-than-siblings.
+	tw.tween_property(btn, "scale", Vector2(1.15, 1.15), 0.28) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Wiggle rotation back and forth, ending at a resting tilt.
+	tw.parallel().tween_property(btn, "rotation", deg_to_rad(-14.0), 0.10) \
+		.set_delay(0.14).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(btn, "rotation", deg_to_rad(11.0), 0.12) \
+		.set_delay(0.24).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(btn, "rotation", deg_to_rad(-7.0), 0.10) \
+		.set_delay(0.36).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(btn, "rotation", deg_to_rad(-4.5), 0.18) \
+		.set_delay(0.46).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+func _pick_primary_button() -> Button:
+	if btn_buy_ui and btn_buy_ui.visible:
+		return btn_buy_ui
+	if _replay_btn and is_instance_valid(_replay_btn) and _replay_btn.visible:
+		return _replay_btn
+	if btn_retry and btn_retry.visible:
+		return btn_retry
+	return null
 
 # ─── BUTTON HANDLERS ──────────────────────────────────────────────────
 
@@ -202,7 +635,7 @@ func _on_favourite_level() -> void:
 			entry["favorite"] = true
 			Global.save_state()
 			if _save_btn:
-				_save_btn.text = "★  Favourited!"
+				_save_btn.text = "Favourited!"
 				_save_btn.disabled = true
 			return
 	# Not in library yet — add it now.
@@ -213,5 +646,5 @@ func _on_favourite_level() -> void:
 	})
 	Global.save_state()
 	if _save_btn:
-		_save_btn.text = "★  Favourited!"
+		_save_btn.text = "★ Favourited!"
 		_save_btn.disabled = true

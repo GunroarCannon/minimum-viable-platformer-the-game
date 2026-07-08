@@ -233,10 +233,39 @@ static func _attach_button_hover_tween(btn: Button) -> void:
 	btn.pivot_offset = btn.size * 0.5
 	btn.mouse_entered.connect(func():
 		btn.pivot_offset = btn.size * 0.5
+		# Lift z + disable clipping on ancestor Controls so the scaled-up button
+		# isn't chopped off by ScrollContainers or clipped Panels around it.
+		_lift_button_visibility(btn, true)
 		var tw = btn.create_tween()
 		tw.tween_property(btn, "scale", Vector2(1.06, 1.06), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	)
 	btn.mouse_exited.connect(func():
 		var tw = btn.create_tween()
 		tw.tween_property(btn, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE)
+		tw.tween_callback(Callable(UITheme, "_lift_button_visibility").bind(btn, false))
 	)
+
+## Prevent hover-scaled buttons from being clipped by parent ScrollContainer /
+## clip_contents Controls. Walk up the ancestor chain; while lifted, remember
+## each ancestor whose clipping we disabled so we can restore it on exit.
+static func _lift_button_visibility(btn: Button, lift: bool) -> void:
+	if btn == null or not is_instance_valid(btn):
+		return
+	if lift:
+		btn.z_index = 5
+		var suppressed: Array = []
+		var p: Node = btn.get_parent()
+		while p != null and p is Control:
+			var c: Control = p
+			if c.clip_contents:
+				c.clip_contents = false
+				suppressed.append(c)
+			p = c.get_parent()
+		btn.set_meta("ui_theme_clip_suppressed", suppressed)
+	else:
+		btn.z_index = 0
+		var suppressed: Array = btn.get_meta("ui_theme_clip_suppressed", [])
+		for c in suppressed:
+			if c and is_instance_valid(c):
+				c.clip_contents = true
+		btn.remove_meta("ui_theme_clip_suppressed")

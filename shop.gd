@@ -17,12 +17,34 @@ extends CanvasLayer
 var _d_toggle: CheckBox = null
 var _d_toggle_hint: Label = null
 
+## Recommend button — cycles the tree camera through purchasable skills in
+## priority order. Only visible while there's something left to buy.
+var _recommend_btn: Button = null
+## Snapshot of the current cycle so successive clicks step through the same
+## ordered list until it's exhausted or state changes (buy/spend). Rebuilt
+## lazily by _current_recommendations() when stale.
+var _recommend_cycle: Array = []
+var _recommend_idx: int = -1
+var _recommend_state_sig: String = ""
+
 func _ready() -> void:
 	back_btn.pressed.connect(_on_back)
 	d_buy.pressed.connect(_on_buy)
 	tree_view.skill_selected.connect(_on_skill_selected)
 	UITheme.apply_current(self)
 	legend.visible = false
+
+	# Recommend button — inserted before the tokens label so it sits right of
+	# the title. Hidden by _refresh when nothing is purchasable.
+	_recommend_btn = Button.new()
+	_recommend_btn.text = "★ Recommend"
+	_recommend_btn.custom_minimum_size = Vector2(180, 0)
+	_recommend_btn.add_theme_font_size_override("font_size", 22)
+	_recommend_btn.pressed.connect(_on_recommend)
+	var top_bar := $Root/TopBar
+	top_bar.add_child(_recommend_btn)
+	top_bar.move_child(_recommend_btn, tokens_label.get_index())
+	UITheme.apply_current(_recommend_btn)
 
 	# Create the active-toggle checkbox and append it to the detail VBox.
 	var detail_vbox = $Root/Body/Detail/Scroll/V
@@ -80,6 +102,66 @@ func _refresh() -> void:
 	title_label.text  = "Skill Tree"
 	tree_view.queue_redraw()
 	_refresh_detail()
+	_refresh_recommend_btn()
+
+## Snapshot signature of the "purchasable now" set. When it changes (buy,
+## afford, prereq newly met), we invalidate the cycle so the button steps
+## through a fresh list.
+func _recommend_signature() -> String:
+	var ids := SkillsDB.SKILLS.keys()
+	ids.sort()
+	var parts := PackedStringArray()
+	for sid in ids:
+		if SkillsDB.purchasable_now(sid):
+			parts.append(sid)
+	parts.append("$T=%d" % Global.tokens)
+	return "|".join(parts)
+
+## Build the ordered recommendation list. Priority DESC breaks by depth ASC
+## (shallower nodes first — they unlock more branches) then id ASC for stable
+## order. Only returns skills the player can buy right now.
+func _build_recommend_cycle() -> Array:
+	var items: Array = []
+	for sid in SkillsDB.SKILLS.keys():
+		if not SkillsDB.purchasable_now(sid): continue
+		var pr: int = SkillsDB.get_priority(sid)
+		var depth: int = SkillsDB.depth_from_root(sid)
+		items.append({"sid": sid, "priority": pr, "depth": depth})
+	items.sort_custom(func(a, b):
+		if a.priority != b.priority: return a.priority > b.priority
+		if a.depth != b.depth: return a.depth < b.depth
+		return a.sid < b.sid)
+	var out: Array = []
+	for it in items:
+		out.append(it.sid)
+	return out
+
+## Current cycle, rebuilt if the purchasable set has changed since last time.
+func _current_recommendations() -> Array:
+	var sig := _recommend_signature()
+	if sig != _recommend_state_sig:
+		_recommend_state_sig = sig
+		_recommend_cycle = _build_recommend_cycle()
+		_recommend_idx = -1
+	return _recommend_cycle
+
+func _refresh_recommend_btn() -> void:
+	if _recommend_btn == null: return
+	var recs := _current_recommendations()
+	if recs.is_empty():
+		_recommend_btn.visible = false
+	else:
+		_recommend_btn.visible = true
+		_recommend_btn.text = "★ Recommend (%d)" % recs.size()
+
+func _on_recommend() -> void:
+	var recs := _current_recommendations()
+	if recs.is_empty(): return
+	_recommend_idx = (_recommend_idx + 1) % recs.size()
+	var sid: String = recs[_recommend_idx]
+	if tree_view.has_method("focus_on"):
+		tree_view.focus_on(sid)
+	# _on_skill_selected fires from focus_on's signal, updating the detail panel.
 
 func _refresh_detail() -> void:
 	var sid: String = tree_view.selected_id()
@@ -105,15 +187,21 @@ func _refresh_detail() -> void:
 		d_status.modulate = Color(0.30, 0.70, 0.30)
 		d_buy.text = "Owned"
 		d_buy.disabled = true
-		# Show active toggle + hint for purchased skills.
+		# Show active toggle for purchased skills — but not for load-bearing
+		# ones like basic UI, HUD, procgen and basic enemies. Disabling those
+		# leaves the game visibly broken, so we hide the toggle entirely.
+		var toggleable := SkillsDB.is_toggleable(sid)
 		if _d_toggle:
 			var fkey = SkillsDB.get_feature_key(sid)
-			_d_toggle.visible = true
+			_d_toggle.visible = toggleable
 			_d_toggle.set_block_signals(true)
 			_d_toggle.button_pressed = bool(Global.feature_overrides.get(fkey, true))
 			_d_toggle.set_block_signals(false)
 		if _d_toggle_hint:
-			_d_toggle_hint.visible = true
+			_d_toggle_hint.visible = toggleable
+			if not toggleable:
+				# Explain WHY the toggle is missing so it doesn't feel like a bug.
+				pass
 	elif not prereq:
 		var missing := []
 		for r in d.get("requires", []):

@@ -29,6 +29,15 @@ var _touch_points: Dictionary = {}   # index -> Vector2
 var _pinch_start_dist: float = 0.0
 var _pinch_start_zoom: float = 1.0
 
+# Recommend-cycle state — the shop calls focus_on() with the next recommended
+# skill id; we tween camera + zoom toward it and briefly pulse a highlight ring
+# so the user's eye lands on the right node.
+var _focus_tween: Tween = null
+var _focus_pulse_id: String = ""
+var _focus_pulse_t: float = 0.0
+const FOCUS_ZOOM := 1.35
+const FOCUS_PULSE_SECS := 1.6
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_centre_on_root.call_deferred()
@@ -50,6 +59,13 @@ func _process(delta: float) -> void:
 	if Input.is_action_pressed("down"):  pan.y -= 1
 	if pan != Vector2.ZERO:
 		_camera_offset += pan * pan_speed_keyboard * delta
+		queue_redraw()
+	# Focus pulse ring animation.
+	if _focus_pulse_id != "":
+		_focus_pulse_t += delta
+		if _focus_pulse_t >= FOCUS_PULSE_SECS:
+			_focus_pulse_id = ""
+			_focus_pulse_t = 0.0
 		queue_redraw()
 
 func _world_pos(skill_id: String) -> Vector2:
@@ -182,8 +198,35 @@ func set_selected(sid: String) -> void:
 func selected_id() -> String:
 	return _selected_id
 
+## Tween camera + zoom so `sid` lands in the centre of the view. Also emits
+## skill_selected and starts a highlight pulse so the user's eye is drawn to it.
+func focus_on(sid: String) -> void:
+	if not SkillsDB.SKILLS.has(sid): return
+	var target_zoom: float = clamp(FOCUS_ZOOM, MIN_ZOOM, MAX_ZOOM)
+	# Compute the offset that puts sid at the panel centre at the target zoom.
+	var world: Vector2 = SkillsDB.get_tree_pos(sid)
+	var grid: Vector2 = BASE_GRID_SCALE * target_zoom
+	var target_offset: Vector2 = size * 0.5 - world * grid
+	if _focus_tween and _focus_tween.is_valid():
+		_focus_tween.kill()
+	_focus_tween = create_tween().set_parallel(true)
+	_focus_tween.tween_method(_apply_zoom_scalar, _zoom, target_zoom, 0.45) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_focus_tween.tween_property(self, "_camera_offset", target_offset, 0.45) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_selected_id = sid
+	_focus_pulse_id = sid
+	_focus_pulse_t = 0.0
+	emit_signal("skill_selected", sid)
+	queue_redraw()
+
+func _apply_zoom_scalar(v: float) -> void:
+	_zoom = v
+	queue_redraw()
+
 func _draw() -> void:
 	_draw_grid()
+	_draw_bg_hint()
 
 	var polished := Global.is_unlocked("skill_tree_polish") or Global.is_unlocked("main_menu_extras")
 	var phase = Time.get_ticks_msec() * 0.001
@@ -215,6 +258,9 @@ func _draw() -> void:
 	for sid in SkillsDB.SKILLS.keys():
 		if not _is_revealed(sid): continue
 		_draw_node(sid)
+
+	# Focus pulse ring (drawn on top of the highlighted node).
+	_draw_focus_pulse()
 
 	# "There is more" ghost pips at the far end of edges going to hidden nodes.
 	for sid in SkillsDB.SKILLS.keys():
@@ -358,3 +404,58 @@ func _draw_node(sid: String) -> void:
 		draw_rect(crect, Color(0.18, 0.14, 0.10), false, 1.5)
 		draw_string(font, p + Vector2(-cts.x * 0.5, -r - 8), cs,
 			HORIZONTAL_ALIGNMENT_CENTER, -1, cfs, Color(0.18, 0.14, 0.10))
+
+## Faint "how to navigate" chips drawn behind the grid so first-time users
+## know they can drag / pinch / scroll. Text sits in the bottom-left corner
+## and stays static across camera pans so it reads like screen-space UI.
+func _draw_bg_hint() -> void:
+	var font = ThemeDB.fallback_font
+	# Detect touch capability so we prefer the pinch phrasing there. Godot's
+	# DisplayServer exposes `is_touchscreen_available` on mobile / windows-touch.
+	var touch := false
+	if DisplayServer.has_method("is_touchscreen_available"):
+		touch = DisplayServer.is_touchscreen_available()
+	var lines: Array
+	if touch:
+		lines = [
+			"drag  ·  to pan",
+			"pinch  ·  to zoom",
+			"tap a node  ·  to select",
+		]
+	else:
+		lines = [
+			"drag  ·  to pan",
+			"scroll  ·  to zoom",
+			"click a node  ·  to select",
+		]
+	var fs := 18
+	var pad := Vector2(14, 10)
+	var line_h := 22
+	var block_h: float = float(line_h * lines.size()) + pad.y * 2.0
+	var block_w: float = 260.0
+	var origin := Vector2(18, size.y - block_h - 18)
+	# Soft rounded background so the hint reads without competing with the grid.
+	var bg_rect := Rect2(origin, Vector2(block_w, block_h))
+	draw_rect(bg_rect, Color(1.0, 0.96, 0.85, 0.35), true)
+	draw_rect(bg_rect, Color(0.30, 0.22, 0.14, 0.20), false, 1.0)
+	for i in range(lines.size()):
+		var y := origin.y + pad.y + line_h * (i + 1) - 6
+		draw_string(font, Vector2(origin.x + pad.x, y), lines[i],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.20, 0.14, 0.08, 0.55))
+
+## Expanding, fading ring drawn around the currently-focused recommend target
+## so the user can spot it after the camera tween lands.
+func _draw_focus_pulse() -> void:
+	if _focus_pulse_id == "": return
+	if not SkillsDB.SKILLS.has(_focus_pulse_id): return
+	var p: Vector2 = _world_pos(_focus_pulse_id)
+	var t: float = _focus_pulse_t / FOCUS_PULSE_SECS
+	# Two overlapping rings on staggered phases so the pulse reads as ongoing
+	# rather than a single quick flash.
+	for phase in [0.0, 0.5]:
+		var pt: float = fmod(t + phase, 1.0)
+		var base_r: float = _node_radius() * 1.15
+		var ring_r: float = base_r + pt * 90.0 * _zoom
+		var alpha: float = 0.85 * (1.0 - pt)
+		draw_arc(p, ring_r, 0.0, TAU, 48,
+			Color(1.0, 0.85, 0.30, alpha), 4.0 * _zoom, true)

@@ -40,9 +40,10 @@ func _is_lightweight_target() -> bool:
 
 func _add_pass(feature_key: String, sh: Shader) -> void:
 	var r = ColorRect.new()
-	r.anchor_right = 1.0
-	r.anchor_bottom = 1.0
-	r.color = Color.WHITE
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Transparent base so that if the shader ever fails to compile or fails to
+	# sample screen_tex, we get "no visible effect" instead of a full white flash.
+	r.color = Color(1, 1, 1, 0)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var mat = ShaderMaterial.new()
 	mat.shader = sh
@@ -55,12 +56,12 @@ func _process(delta: float) -> void:
 
 	for key in passes.keys():
 		var r: ColorRect = passes[key]
-		var enabled: bool
-		if key == "wobble_shader":
-			# Wobble only visible when unlocked and the player is actually in air.
-			enabled = Global.is_unlocked(key) and not Global.use_primitives and wobble_intensity > 0.0005
-		else:
-			enabled = Global.is_unlocked(key) and not Global.use_primitives
+		# Wobble stays visible whenever unlocked. Toggling it on/off mid-frame
+		# based on intensity was causing a one-frame white flash on some drivers
+		# because screen_tex was sampled before the backbuffer had been populated
+		# for this pass. Intensity=0 is now a proper identity in the shader, so
+		# leaving it visible is cheap and safe.
+		var enabled: bool = Global.is_unlocked(key) and not Global.use_primitives
 		if r.visible != enabled:
 			r.visible = enabled
 

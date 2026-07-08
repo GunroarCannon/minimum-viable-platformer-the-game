@@ -267,6 +267,7 @@ var SKILLS: Dictionary = {
 		"desc": "Adds the main menu, shop and settings screens.\nWithout this you only see the game world.",
 		"cost": 1, "requires": [], "branch": "ui",
 		"icon": "UI",
+		"priority": 100, "non_toggleable": true,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -277,24 +278,28 @@ var SKILLS: Dictionary = {
 		"desc": "Rounded panels, smooth hover animations, custom colours.",
 		"cost": 4, "requires": ["ui"], "branch": "ui",
 		"icon": "PL",
+		"priority": 70,
 	},
 	"main_menu_extras": {
 		"id": "main_menu_extras", "name": "Menu Polish",
 		"desc": "Animated title intro, button SFX hooks.",
 		"cost": 3, "requires": ["ui_polished"], "branch": "ui",
 		"icon": "MP",
+		"priority": 55,
 	},
 	"hud": {
 		"id": "hud", "name": "In-Game HUD",
 		"desc": "Distance and token counters appear during play.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
 		"icon": "HD",
+		"priority": 95, "non_toggleable": true,
 	},
 	"pause_menu": {
 		"id": "pause_menu", "name": "Pause Menu",
 		"desc": "Press Esc to pause and access shop / menu mid-run.",
 		"cost": 2, "requires": ["hud"], "branch": "ui",
 		"icon": "PS",
+		"priority": 80,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -305,48 +310,56 @@ var SKILLS: Dictionary = {
 		"desc": "Player squishes on jump and lands with a satisfying squash.\nFloors squish on landing too.",
 		"cost": 2, "requires": ["ui"], "branch": "juice",
 		"icon": "SS",
+		"priority": 85,
 	},
 	"hit_flash": {
 		"id": "hit_flash", "name": "Hit Flash",
 		"desc": "Things flash white when stomped or stunned.",
 		"cost": 1, "requires": ["juice_squash"], "branch": "juice",
 		"icon": "HF",
+		"priority": 72,
 	},
 	"impact_freeze": {
 		"id": "impact_freeze", "name": "Impact Freeze",
 		"desc": "Time briefly pauses on heavy impacts. Feels chunky.",
 		"cost": 2, "requires": ["juice_squash", "camera_shake"], "branch": "juice",
 		"icon": "IF",
+		"priority": 60,
 	},
 	"motion_trail": {
 		"id": "motion_trail", "name": "Motion Trail",
 		"desc": "A trailing afterimage follows the running player.",
 		"cost": 2, "requires": ["juice_squash", "sprint"], "branch": "juice",
 		"icon": "MT",
+		"priority": 45,
 	},
 	"footstep_dust": {
 		"id": "footstep_dust", "name": "Footstep Dust",
 		"desc": "Small puffs kick up while you sprint along the ground.",
 		"cost": 1, "requires": ["juice_squash"], "branch": "juice",
 		"icon": "FD",
+		"priority": 42,
 	},
 	"tear_effects": {
 		"id": "tear_effects", "name": "Tear Effects",
 		"desc": "Things shatter into rigid-body pieces when destroyed.",
 		"cost": 3, "requires": ["juice_squash"], "branch": "juice",
 		"icon": "TE",
+		"priority": 40,
 	},
 	"blood_splats": {
 		"id": "blood_splats", "name": "Blood Splats",
 		"desc": "Death is messy. Circular red splatter on enemy and player death.\nBlood trail direction follows impact velocity.",
 		"cost": 2, "requires": ["juice_squash"], "branch": "juice",
 		"icon": "BS",
+		"priority": 50,
 	},
 	"blood_marks": {
 		"id": "blood_marks", "name": "Blood Stains",
 		"desc": "Blood splatters leave persistent circular marks on the level floor.\nMarks persist for the whole run. Toggle blood trail in Settings.",
 		"cost": 2, "requires": ["blood_splats"], "branch": "juice",
 		"icon": "BM",
+		"priority": 35,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -357,12 +370,14 @@ var SKILLS: Dictionary = {
 		"desc": "Big impacts shake the camera. More game-feel.",
 		"cost": 2, "requires": ["ui"], "branch": "camera",
 		"icon": "CS",
+		"priority": 78,
 	},
 	"dynamic_zoom": {
 		"id": "dynamic_zoom", "name": "Dynamic Zoom",
 		"desc": "Camera zooms out over wide gaps so you can see what's coming.",
 		"cost": 3, "requires": ["camera_shake", "parallax"], "branch": "camera",
 		"icon": "DZ",
+		"priority": 55,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -373,30 +388,35 @@ var SKILLS: Dictionary = {
 		"desc": "Darkened corners for cinematic framing.",
 		"cost": 2, "requires": ["ui_polished"], "branch": "shaders",
 		"icon": "VG",
+		"priority": 48,
 	},
 	"chromatic_aberration": {
 		"id": "chromatic_aberration", "name": "Chromatic Aber.",
 		"desc": "RGB channels split at the edges, exaggerated under impact.",
 		"cost": 2, "requires": ["vignette"], "branch": "shaders",
 		"icon": "CA",
+		"priority": 38,
 	},
 	"color_grading": {
 		"id": "color_grading", "name": "Color Grading",
 		"desc": "Warm filmic tint and punchier saturation.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "shaders",
 		"icon": "CG",
+		"priority": 44,
 	},
 	"crt_filter": {
 		"id": "crt_filter", "name": "CRT Filter",
 		"desc": "Scanlines and screen curvature.",
 		"cost": 3, "requires": ["chromatic_aberration"], "branch": "shaders",
 		"icon": "CR",
+		"priority": 30,
 	},
 	"wobble_shader": {
 		"id": "wobble_shader", "name": "Air Warp",
 		"desc": "The screen warps as the player falls — intensity scales with vertical speed.",
 		"cost": 3, "requires": ["crt_filter"], "branch": "shaders",
 		"icon": "AW",
+		"priority": 28,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -407,18 +427,21 @@ var SKILLS: Dictionary = {
 		"desc": "Higher top speed when auto-running.",
 		"cost": 2, "requires": ["ui"], "branch": "moves",
 		"icon": "SP",
+		"priority": 82,
 	},
 	"double_jump": {
 		"id": "double_jump", "name": "Double Jump",
 		"desc": "Press jump again in mid-air to leap a second time.",
 		"cost": 3, "requires": ["sprint"], "branch": "moves",
 		"icon": "DJ",
+		"priority": 75,
 	},
 	"wall_jump": {
 		"id": "wall_jump", "name": "Wall Jump",
 		"desc": "Jump again off walls during a slide.",
 		"cost": 3, "requires": ["double_jump"], "branch": "moves",
 		"icon": "WJ",
+		"priority": 60,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -429,60 +452,70 @@ var SKILLS: Dictionary = {
 		"desc": "Replaces primitive blocks with hand-drawn wavy yellow-green platforms.",
 		"cost": 2, "requires": ["ui"], "branch": "graphics",
 		"icon": "DF",
+		"priority": 84,
 	},
 	"foliage": {
 		"id": "foliage", "name": "Foliage",
 		"desc": "Little tufts of grass and flowers along the floor edge.\nOnly appears on grounded platforms, not floating ones.",
 		"cost": 1, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "FO",
+		"priority": 40,
 	},
 	"palette_switcher": {
 		"id": "palette_switcher", "name": "Palette Switcher",
 		"desc": "Unlocks colour palette options in Settings.\nChoose from Default, Warm, Cool, Night, and Neon themes.",
 		"cost": 3, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "PA",
+		"priority": 38,
 	},
 	"particles": {
 		"id": "particles", "name": "Particles",
 		"desc": "Dust on landing, smoke on death, sparks on stomp.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "PT",
+		"priority": 62,
 	},
 	"player_sprite": {
 		"id": "player_sprite", "name": "Player Sprite",
 		"desc": "Replaces the player rectangle with proper character art.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "PX",
+		"priority": 68,
 	},
 	"sprite_animations": {
 		"id": "sprite_animations", "name": "Sprite Anims",
 		"desc": "Idle, run, jump and hurt animations play for the player.",
 		"cost": 3, "requires": ["player_sprite"], "branch": "graphics",
 		"icon": "SA",
+		"priority": 58,
 	},
 	"outline": {
 		"id": "outline", "name": "Sprite Outline",
 		"desc": "Dark ink outline around the player sprite.",
 		"cost": 2, "requires": ["player_sprite"], "branch": "shaders",
 		"icon": "OL",
+		"priority": 32,
 	},
 	"parallax": {
 		"id": "parallax", "name": "Parallax Backdrop",
 		"desc": "Multi-layer scrolling background hills.",
 		"cost": 3, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "PB",
+		"priority": 65,
 	},
 	"clouds": {
 		"id": "clouds", "name": "Clouds",
 		"desc": "Soft clouds drift across the sky.",
 		"cost": 2, "requires": ["parallax"], "branch": "graphics",
 		"icon": "CL",
+		"priority": 34,
 	},
 	"sky_color": {
 		"id": "sky_color", "name": "Sky Colours",
 		"desc": "Unlocks sky colour options in Settings.\nChoose from Default, Sunset, Night, Dawn, and Overcast skies.",
 		"cost": 2, "requires": ["parallax"], "branch": "graphics",
 		"icon": "SK",
+		"priority": 36,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -493,30 +526,35 @@ var SKILLS: Dictionary = {
 		"desc": "Frogs and kobolds start appearing in levels.",
 		"cost": 2, "requires": ["ui"], "branch": "enemies",
 		"icon": "BE",
+		"priority": 90, "non_toggleable": true,
 	},
 	"enemy_sprites": {
 		"id": "enemy_sprites", "name": "Enemy Sprites",
 		"desc": "Enemies, spikes and smashers get their proper sprite art.",
 		"cost": 2, "requires": ["enemies_basic"], "branch": "enemies",
 		"icon": "ES",
+		"priority": 60,
 	},
 	"enemies_more": {
 		"id": "enemies_more", "name": "More Enemies",
 		"desc": "Bats and big frogs join the party.",
 		"cost": 3, "requires": ["enemies_basic"], "branch": "enemies",
 		"icon": "ME",
+		"priority": 66,
 	},
 	"enemies_advanced": {
 		"id": "enemies_advanced", "name": "Adv. Enemies",
 		"desc": "Bombs, shooters, drills and jumpers.",
 		"cost": 4, "requires": ["enemies_more"], "branch": "enemies",
 		"icon": "AE",
+		"priority": 52,
 	},
 	"smashers": {
 		"id": "smashers", "name": "Smashers",
 		"desc": "Ceiling hammers that drop when you walk under them.",
 		"cost": 3, "requires": ["enemies_more"], "branch": "enemies",
 		"icon": "SM",
+		"priority": 48,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -527,60 +565,70 @@ var SKILLS: Dictionary = {
 		"desc": "Unlocks the full library of level templates: stairs, elevated platforms, combos.\nWithout this you only run on flat ground.",
 		"cost": 4, "requires": ["ui"], "branch": "level",
 		"icon": "PG",
+		"priority": 92, "non_toggleable": true,
 	},
 	"coins": {
 		"id": "coins", "name": "Coins",
 		"desc": "Golden coins appear in levels. Collect them for bonus tokens.",
 		"cost": 3, "requires": ["procgen"], "branch": "level",
 		"icon": "CO",
+		"priority": 78,
 	},
 	"level_library": {
 		"id": "level_library", "name": "Level Library",
 		"desc": "Each run's seed is saved so you can replay favourites.\nUnlocks the Level Library in the main menu.\nFavourite levels are never evicted. Best distances are tracked per seed.",
 		"cost": 5, "requires": ["coins"], "branch": "level",
 		"icon": "LL",
+		"priority": 62,
 	},
 	"stats_menu": {
 		"id": "stats_menu", "name": "Stats Menu",
 		"desc": "Unlocks the Stats screen — playtime, jumps, longest run, longest combo, deaths, and more.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
 		"icon": "ST",
+		"priority": 55,
 	},
 	"fast_mode": {
 		"id": "fast_mode", "name": "Fast Mode",
 		"desc": "Unlocks a toggle in Settings: run faster and earn more points per tile.",
 		"cost": 3, "requires": ["sprint"], "branch": "moves",
 		"icon": "FM",
+		"priority": 58,
 	},
 	"font_select": {
 		"id": "font_select", "name": "Font Select",
 		"desc": "Adds a font picker in Settings — cycles through all fonts in assets/fonts.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
 		"icon": "FT",
+		"priority": 30,
 	},
 	"sprite_explosion": {
 		"id": "sprite_explosion", "name": "Sprite Explosions",
 		"desc": "Bombs use a frame-animation explosion instead of a particle poof.",
 		"cost": 2, "requires": ["enemies_advanced", "particles"], "branch": "enemies",
 		"icon": "SX",
+		"priority": 30,
 	},
 	"daily_level": {
 		"id": "daily_level", "name": "Daily Level",
 		"desc": "Unlocks the Daily Level — one seed per calendar day, shared by everyone.",
 		"cost": 4, "requires": ["level_library"], "branch": "level",
 		"icon": "DL",
+		"priority": 46,
 	},
 	"home_polish": {
 		"id": "home_polish", "name": "Nicer Home",
 		"desc": "Redesigns the main menu with polished layout and animations.",
 		"cost": 3, "requires": ["main_menu_extras"], "branch": "ui",
 		"icon": "HP",
+		"priority": 32,
 	},
 	"adaptive_sky": {
 		"id": "adaptive_sky", "name": "Adaptive Sky",
 		"desc": "Sky colour and palette shift over the course of a run.",
 		"cost": 3, "requires": ["sky_color"], "branch": "graphics",
 		"icon": "AS",
+		"priority": 30,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -591,30 +639,35 @@ var SKILLS: Dictionary = {
 		"desc": "Chained air-time & stomp combos build a token multiplier.\nA big xN pops on-screen while the streak is alive.",
 		"cost": 4, "requires": ["juice_squash"], "branch": "juice",
 		"icon": "CM",
+		"priority": 70,
 	},
 	"combo_bounce": {
 		"id": "combo_bounce", "name": "Bouncy Combo Text",
 		"desc": "Combo popups spring in with a bouncy scale instead of a plain fade.",
 		"cost": 2, "requires": ["combo_system", "main_menu_extras"], "branch": "juice",
 		"icon": "BT",
+		"priority": 28,
 	},
 	"skill_tree_polish": {
 		"id": "skill_tree_polish", "name": "Skill Tree Polish",
 		"desc": "Curved bezier connections, animated pulse on active paths.",
 		"cost": 2, "requires": ["main_menu_extras"], "branch": "ui",
 		"icon": "TP",
+		"priority": 34,
 	},
 	"fog_cover": {
 		"id": "fog_cover", "name": "Fog Cover",
 		"desc": "A dark fog swallows the lower part of the screen — floors below fade into blackness.",
 		"cost": 3, "requires": ["vignette"], "branch": "shaders",
 		"icon": "FG",
+		"priority": 30,
 	},
 	"near_miss_slowmo": {
 		"id": "near_miss_slowmo", "name": "Near-Miss Slow-Mo",
 		"desc": "Brushing past an enemy triggers a brief cinematic slow-motion.\nFires 30% of the time.",
 		"cost": 3, "requires": ["impact_freeze"], "branch": "camera",
 		"icon": "NM",
+		"priority": 42,
 	},
 }
 
@@ -647,6 +700,25 @@ func get_feature_key(skill_id: String) -> String:
 
 func get_branch_color(branch: String) -> Color:
 	return BRANCH_COLORS.get(branch, Color.WHITE)
+
+## Recommendation priority: higher = surfaced first. Defaults to 50.
+func get_priority(skill_id: String) -> int:
+	var d = SKILLS.get(skill_id, null)
+	if d == null: return 0
+	return int(d.get("priority", 50))
+
+## Load-bearing skills that must stay on once bought (basic UI, HUD, enemies,
+## procgen). Users can't disable them from the shop toggle.
+func is_toggleable(skill_id: String) -> bool:
+	var d = SKILLS.get(skill_id, null)
+	if d == null: return true
+	return not bool(d.get("non_toggleable", false))
+
+## Purchasable RIGHT NOW: not owned, prereqs met, affordable.
+func purchasable_now(skill_id: String) -> bool:
+	if is_purchased(skill_id): return false
+	if not prereqs_met(skill_id): return false
+	return can_afford(skill_id)
 
 func can_afford(skill_id: String) -> bool:
 	if not SKILLS.has(skill_id): return false

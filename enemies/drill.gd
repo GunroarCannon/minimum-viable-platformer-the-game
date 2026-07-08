@@ -74,7 +74,7 @@ func _on_body_entered(body: Node) -> void:
 	elif body is BaseEnemy:
 		body.die_torn(Vector2(0, fall_speed))
 	elif body.has_method("die"):
-		body.die(false, "a drill")
+		body.die(false, "a drill", true)
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not anim:

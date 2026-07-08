@@ -92,6 +92,9 @@ func _auto_setup_sprite_frames() -> void:
 	if not _use_sprite_player:
 		anim.visible = false
 		queue_redraw()
+		# Still register empty animation names so the addon's anim.play("idle") etc.
+		# don't spam "There is no animation with name 'idle'" errors.
+		_install_stub_sprite_frames()
 		return
 
 	anim.visible = true
@@ -132,6 +135,15 @@ func _auto_setup_sprite_frames() -> void:
 	anim.scale = new_scale
 	animScaleLock = abs(new_scale)
 	anim.play("idle")
+
+
+func _install_stub_sprite_frames() -> void:
+	var stub = SpriteFrames.new()
+	for anim_name in ["idle", "run", "walk", "jump", "falling", "slide", "latch",
+			"crouch_idle", "crouch_walk", "roll", "hurt_1", "hurt_2", "dash"]:
+		if not stub.has_animation(anim_name):
+			stub.add_animation(anim_name)
+	anim.sprite_frames = stub
 
 
 @onready var dust_particles: CPUParticles2D = $DustParticles
@@ -633,9 +645,24 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 			get_parent().add_child(poof)
 			poof.global_position = global_position
 	else:
+		# Capture inbound velocity BEFORE zeroing so the tear pieces launch with
+		# whatever momentum was in play (knockback from a bomb, forward run
+		# speed, etc.). Without this the shatter pieces just plop straight
+		# down.
+		var tear_impulse: Vector2 = velocity
 		collision_layer = 0
 		collision_mask = 0
 		velocity = Vector2.ZERO
+		# Bomb deaths should really throw pieces around. Find the nearest bomb-
+		# ish source and add an outward impulse so the shatter reads as blown
+		# apart, not merely dropped.
+		if cause == "a bomb":
+			var blast_src: Vector2 = _find_blast_source()
+			var away: Vector2 = (global_position - blast_src)
+			if away.length_squared() < 1.0:
+				away = Vector2(0, -1)
+			away = away.normalized()
+			tear_impulse += away * 900.0 + Vector2(0, -400.0)
 
 		# Smasher (and other instant-shatter causes) skip the flash+squash intro
 		# and go straight to the tear so the player feels genuinely crushed.
@@ -659,7 +686,11 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 				anim.play(anim_name)
 				await get_tree().process_frame
 		if _use_tears:
-			TearEffect.apply(self, Vector2(80, 110), Color(0.4, 0.8, 1.0), velocity, [], "circular")
+			# Nudge a nearly-still player so pieces still fly a bit — otherwise
+			# a stationary death produces a boring puddle.
+			if tear_impulse.length() < 120.0:
+				tear_impulse += Vector2(randf_range(-160.0, 160.0), -260.0)
+			TearEffect.apply(self, Vector2(80, 110), Color(0.4, 0.8, 1.0), tear_impulse, [], "circular")
 		else:
 			if anim: anim.visible = false
 			visible = _use_sprite_player  # keep something to look at unless primitives
@@ -679,6 +710,25 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 	else:
 		if game_over_ui and game_over_ui.has_method("show_game_over"):
 			game_over_ui.show_game_over(awarded, distance_tiles)
+
+## Best-guess origin for a bomb blast. Prefers the closest live bomb node in
+## the hazards group; falls back to the player's own position (which nulls the
+## outward impulse). The bomb queues itself free during _explode(), so this
+## must be called while the bomb still exists.
+func _find_blast_source() -> Vector2:
+	var best: Vector2 = global_position
+	var best_d: float = INF
+	for h in get_tree().get_nodes_in_group("hazards"):
+		if not is_instance_valid(h): continue
+		if not h is Node2D: continue
+		var s = h.get_script()
+		if s == null: continue
+		if not s.resource_path.ends_with("bomb.gd"): continue
+		var d: float = global_position.distance_to((h as Node2D).global_position)
+		if d < best_d:
+			best_d = d
+			best = (h as Node2D).global_position
+	return best
 
 func get_local_lowest_y() -> float:
 	var player_x = global_position.x

@@ -5,11 +5,37 @@ extends Control
 
 @export var layer_type: String = "sky"   # "sky" / "far" / "near"
 
+const SKY_FADE_SEC := 3.0
+
+var _sky_current: String = ""
+var _sky_from: String = ""
+var _sky_t: float = 1.0
+var _sky_tween: Tween = null
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	resized.connect(queue_redraw)
-	Global.sky_changed.connect(queue_redraw)
+	Global.sky_changed.connect(_on_sky_changed)
 	Global.palette_changed.connect(queue_redraw)
+	_sky_current = Global.sky_color
+	_sky_from = _sky_current
+
+func _on_sky_changed() -> void:
+	if layer_type != "sky":
+		queue_redraw()
+		return
+	# Start a smooth interpolation from the previous preset to the new one.
+	_sky_from = _sky_current
+	_sky_current = Global.sky_color
+	_sky_t = 0.0
+	if _sky_tween and _sky_tween.is_valid():
+		_sky_tween.kill()
+	_sky_tween = create_tween()
+	_sky_tween.tween_method(_set_sky_t, 0.0, 1.0, SKY_FADE_SEC)
+
+func _set_sky_t(t: float) -> void:
+	_sky_t = t
+	queue_redraw()
 
 func _draw() -> void:
 	match layer_type:
@@ -18,32 +44,29 @@ func _draw() -> void:
 		"far":    _draw_hills(0.62, Color(0.93, 0.72, 0.45), 80.0)
 		"near":   _draw_hills(0.78, Color(0.85, 0.55, 0.30), 110.0)
 
+func _sky_colors_for(name: String) -> Array:
+	match name:
+		"sunset":
+			return [Color(1.00, 0.60, 0.30), Color(0.95, 0.42, 0.32), Color(0.78, 0.30, 0.48)]
+		"night":
+			return [Color(0.04, 0.06, 0.18), Color(0.07, 0.10, 0.26), Color(0.10, 0.14, 0.30)]
+		"dawn":
+			return [Color(0.72, 0.62, 0.90), Color(0.95, 0.72, 0.80), Color(1.00, 0.88, 0.68)]
+		"overcast":
+			return [Color(0.68, 0.70, 0.74), Color(0.74, 0.76, 0.80), Color(0.80, 0.82, 0.85)]
+		_:
+			return [Color(1.00, 0.93, 0.80), Color(0.99, 0.83, 0.62), Color(0.97, 0.74, 0.50)]
+
 func _draw_sky() -> void:
 	var sz = size
-	var top: Color
-	var mid: Color
-	var bot: Color
-	match Global.sky_color:
-		"sunset":
-			top = Color(1.00, 0.60, 0.30)
-			mid = Color(0.95, 0.42, 0.32)
-			bot = Color(0.78, 0.30, 0.48)
-		"night":
-			top = Color(0.04, 0.06, 0.18)
-			mid = Color(0.07, 0.10, 0.26)
-			bot = Color(0.10, 0.14, 0.30)
-		"dawn":
-			top = Color(0.72, 0.62, 0.90)
-			mid = Color(0.95, 0.72, 0.80)
-			bot = Color(1.00, 0.88, 0.68)
-		"overcast":
-			top = Color(0.68, 0.70, 0.74)
-			mid = Color(0.74, 0.76, 0.80)
-			bot = Color(0.80, 0.82, 0.85)
-		_:  # default — warm peach gradient
-			top = Color(1.00, 0.93, 0.80)
-			mid = Color(0.99, 0.83, 0.62)
-			bot = Color(0.97, 0.74, 0.50)
+	var from_cols = _sky_colors_for(_sky_from)
+	var to_cols = _sky_colors_for(_sky_current)
+	var k = clamp(_sky_t, 0.0, 1.0)
+	# Smoothstep so the crossfade eases in and out instead of ramping linearly.
+	k = k * k * (3.0 - 2.0 * k)
+	var top: Color = from_cols[0].lerp(to_cols[0], k)
+	var mid: Color = from_cols[1].lerp(to_cols[1], k)
+	var bot: Color = from_cols[2].lerp(to_cols[2], k)
 	var bands := 28
 	for i in bands:
 		var t = float(i) / float(bands - 1)

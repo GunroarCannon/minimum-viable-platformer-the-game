@@ -62,7 +62,7 @@ func _on_body_entered(body: Node2D) -> void:
 			return
 		body.die_torn(body.velocity)
 	elif body.has_method("die"):
-		body.die(false, "spikes")  # player – by_fall defaults false → tear death
+		body.die(false, "spikes", true)  # player – by_fall defaults false → tear death
 
 func _on_area_entered(area: Area2D) -> void:
 	print("[Spike Debug] area_entered by: ", area.name, " script: ", area.get_script().resource_path if area.get_script() else "none")

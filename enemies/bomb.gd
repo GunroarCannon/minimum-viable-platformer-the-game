@@ -27,7 +27,7 @@ func _custom_process(delta: float) -> void:
 	
 	match state:
 		"walking":
-			if is_on_floor():
+			if false and 	is_on_floor():
 				var dir = sign(player.global_position.x - global_position.x)
 				if dir == 0: dir = 1
 				velocity.x = dir * walk_speed
@@ -47,16 +47,66 @@ func _custom_process(delta: float) -> void:
 			if timer <= 0:
 				_explode()
 
+## When the player bumps our hitbox from the side/above/anywhere except a stomp,
+## don't just kill them — light the fuse. The imminent explosion will kill them
+## next frame, and it feels much more like "a bomb went off in your face."
+func _on_hitbox_area_entered(area: Area2D) -> void:
+	if _is_dying: return
+	if state != "walking":
+		return
+	var body = area.get_parent()
+	if body == null: return
+	if not body.has_method("die"): return
+	if body.get("is_dead"): return
+	# Skip head-stomp: the foot sensor handles that case separately.
+	if body.global_position.y < global_position.y - 30:
+		return
+	state = "loading"
+	timer = 0.08  # near-instant fuse
+	velocity.x = 0
+
+const KNOCKBACK_IMPULSE := 3500.0
+const KNOCKBACK_LIFT := 1000.0
+
 func _explode() -> void:
 	state = "exploding"
-	
+
 	if player and player.has_method("shake_camera"):
 		player.shake_camera(40.0, 0.5)
-		
+
+	# Knock back anything within ~1.5× the kill radius so nearby survivors
+	# feel the shockwave even if they're outside the lethal zone.
+	_apply_explosion_knockback(explosion_radius * 1.5)
+
 	var dist = global_position.distance_to(player.global_position)
 	if dist <= explosion_radius:
 		if player.has_method("die"):
-			player.die(false, "a bomb")
+			player.die(false, "a bomb", true)
+
+## Push every knockable body away from the blast with an impulse that falls off
+## with distance. Applies to CharacterBody2D (enemies, player) via velocity and
+## RigidBody2D via apply_impulse.
+func _apply_explosion_knockback(radius: float) -> void:
+	var candidates: Array = []
+	candidates.append_array(get_tree().get_nodes_in_group("hazards"))
+	candidates.append_array(get_tree().get_nodes_in_group("player"))
+	for n in candidates:
+		if n == self: continue
+		if not is_instance_valid(n): continue
+		if not n is Node2D: continue
+		var np: Vector2 = (n as Node2D).global_position
+		var d: float = global_position.distance_to(np)
+		if d > radius: continue
+		var falloff: float = 1.0 - clamp(d / radius, 0.0, 1.0)
+		var dir: Vector2 = (np - global_position)
+		if dir.length_squared() < 1.0:
+			dir = Vector2.UP
+		dir = dir.normalized()
+		var impulse: Vector2 = dir * KNOCKBACK_IMPULSE * falloff + Vector2(0, -KNOCKBACK_LIFT * falloff)
+		if n is CharacterBody2D:
+			(n as CharacterBody2D).velocity += impulse
+		elif n is RigidBody2D:
+			(n as RigidBody2D).apply_impulse(impulse)
 	
 	if Global.is_unlocked("sprite_explosion"):
 		_spawn_sprite_explosion()
@@ -79,7 +129,7 @@ func _explode() -> void:
 	queue_free()
 
 func _spawn_sprite_explosion() -> void:
-	var folder := "res://assets/animations/%s/" % (["explosion", "explosion2"][randi() % 2])
+	var folder := "res://assets/animations/explosion/"
 	var frames := SpriteFrames.new()
 	frames.add_animation("boom")
 	frames.set_animation_loop("boom", false)

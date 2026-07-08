@@ -60,4 +60,3 @@ func _draw() -> void:
 
 	if Global.debug_toggles.get("show_collisions", false):
 		draw_rect(Rect2(-32, -64, 64, 128), Color.GREEN, false, 2.0)
-

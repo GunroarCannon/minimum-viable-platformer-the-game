@@ -11,6 +11,8 @@ var _shown: bool = false
 var _last_tokens: int = 0
 var _mult_label: Label = null
 var _best_flag: Label = null   # rotated side indicator
+var _best_flag_state: String = ""    # last committed state ("", "ALMOST!", "NEW BEST!")
+var _best_flag_intro_played: bool = false
 
 func _ready() -> void:
 	layer = 30
@@ -53,7 +55,11 @@ func _build_best_flag() -> void:
 	_best_flag.custom_minimum_size = Vector2(240, 40)
 	_best_flag.position = Vector2(48, get_viewport().get_visible_rect().size.y * 0.5 + 120)
 	_best_flag.visible = false
+	_best_flag.modulate.a = 0.0
+	_best_flag.pivot_offset = _best_flag.custom_minimum_size * 0.5
 	root.add_child(_best_flag)
+	_best_flag_state = ""
+	_best_flag_intro_played = false
 
 func _is_touch_platform() -> bool:
 	return OS.get_name() in ["Android", "iOS"] or DisplayServer.is_touchscreen_available()
@@ -122,27 +128,54 @@ func _update_best_flag() -> void:
 	var score := Global.current_run_score
 	var ever := Global.best_score_ever
 	var seed_best := Global.current_seed_best_score
-	# Priority: beat ever > beat seed > almost either.
+
+	# Only compute a state if the run has actually produced score. Prevents any
+	# residual "ALMOST!" state at the very start of a run when score is zero but
+	# thresholds happen to be zero too.
 	var state := ""
 	var beat := false
-	if ever > 0 and score > ever:
-		state = "NEW BEST!"; beat = true
-	elif seed_best > 0 and score > seed_best:
-		state = "NEW BEST!"; beat = true
-	elif ever > 0 and score >= int(ever * 0.9):
-		state = "ALMOST!"
-	elif seed_best > 0 and score >= int(seed_best * 0.9):
-		state = "ALMOST!"
+	if score > 0:
+		# Priority: beat ever > beat seed > almost either. Threshold tightened to
+		# 94% so ALMOST doesn't linger for an entire run after just crossing 90%.
+		if ever > 0 and score > ever:
+			state = "NEW BEST!"; beat = true
+		elif seed_best > 0 and score > seed_best:
+			state = "NEW BEST!"; beat = true
+		elif ever > 0 and score >= int(ever * 0.94):
+			state = "ALMOST!"
+		elif seed_best > 0 and score >= int(seed_best * 0.94):
+			state = "ALMOST!"
+
+	if state != _best_flag_state:
+		_best_flag_state = state
+		if state == "":
+			# Fade out; keep it invisible until a new state fires.
+			var tw_out := create_tween()
+			tw_out.tween_property(_best_flag, "modulate:a", 0.0, 0.25)
+			tw_out.tween_callback(func(): _best_flag.visible = false)
+			return
+		# Entering a new state — play the intro pop once.
+		_best_flag.visible = true
+		_best_flag.text = state
+		_best_flag.scale = Vector2(0.4, 0.4)
+		_best_flag.modulate.a = 0.0
+		var tw_in := create_tween()
+		tw_in.tween_property(_best_flag, "modulate:a", 1.0, 0.20)
+		tw_in.parallel().tween_property(_best_flag, "scale", Vector2.ONE, 0.35) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		_best_flag_intro_played = true
+
 	if state == "":
-		_best_flag.visible = false
 		return
-	_best_flag.visible = true
-	_best_flag.text = state
+
+	# Idle animation once the flag is committed.
 	var t = Time.get_ticks_msec() * 0.001
 	if beat:
 		var hue = fmod(t * 0.4, 1.0)
 		_best_flag.add_theme_color_override("font_color", Color.from_hsv(hue, 0.85, 1.0))
 	else:
 		_best_flag.add_theme_color_override("font_color", Color(1.0, 0.85, 0.20))
-	var scale_factor = 1.0 + 0.06 * sin(t * (5.0 if beat else 3.0))
-	_best_flag.scale = Vector2(scale_factor, scale_factor)
+	var pulse := 1.0 + 0.05 * sin(t * (5.0 if beat else 3.0))
+	# Blend the intro tween's scale toward the pulse without ever fighting it.
+	if _best_flag.scale.x >= 0.9:
+		_best_flag.scale = Vector2(pulse, pulse)
