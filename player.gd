@@ -21,6 +21,8 @@ var _use_impact_freeze: bool = false
 var _use_hit_flash:     bool = false
 var _use_near_miss:     bool = false
 
+# ─── AUDIO ─────────────────────────────────────────────────────────────────
+
 # Near-miss slow-mo bookkeeping. Cooldown gates back-to-back triggers so
 # passing several enemies in a chain only fires one cinematic beat.
 const NEAR_MISS_RADIUS := 140.0
@@ -28,6 +30,7 @@ const NEAR_MISS_COOLDOWN := 1.2
 const NEAR_MISS_CHANCE := 0.30
 var _near_miss_cd: float = 0.0
 var _near_miss_active: Dictionary = {}
+var _debug_canvas: Node2D
 
 func _resolve_flags() -> void:
 	# When primitives is forced via debug, everything visual stays primitive.
@@ -52,7 +55,12 @@ func _resolve_flags() -> void:
 func _ready() -> void:
 	super._ready()
 	add_to_group("player")
+	_debug_canvas = Node2D.new()
+	_debug_canvas.z_index = 100
+	add_child(_debug_canvas)
+	_debug_canvas.draw.connect(_on_debug_draw)
 	_resolve_flags()
+	dust_particles.texture = Global.get_circle_texture()
 	_auto_setup_sprite_frames()
 
 	if _use_sprint:
@@ -76,13 +84,25 @@ func _ready() -> void:
 	_apply_outline_material()
 
 func _draw() -> void:
+	var s := Vector2.ONE
+	if anim:
+		s = Vector2(abs(anim.scale.x), abs(anim.scale.y))
+
 	# Primitive shape if we don't have the player sprite unlocked.
 	if not _use_sprite_player:
-		draw_rect(Rect2(-40, -55, 80, 110), Color(0.2, 0.4, 0.9, 0.8), true)
-		draw_rect(Rect2(10, -35, 15, 15), Color.WHITE, true)
-		draw_rect(Rect2(20, -30, 5, 5), Color.BLACK, true)
+		draw_rect(Rect2(-40 * s.x, -55 * s.y, 80 * s.x, 110 * s.y), Color(0.2, 0.4, 0.9, 0.8), true)
+		draw_rect(Rect2(10 * s.x, -35 * s.y, 15 * s.x, 15 * s.y), Color.WHITE, true)
+		draw_rect(Rect2(20 * s.x, -30 * s.y, 5 * s.x, 5 * s.y), Color.BLACK, true)
+
+func _on_debug_draw() -> void:
 	if Global.debug_toggles.get("show_collisions", false):
-		draw_rect(Rect2(-40, -55, 80, 110), Color.GREEN, false, 2.0)
+		_debug_canvas.draw_rect(Rect2(-40, -55, 80, 110), Color.GREEN, false, 2.0)
+
+func _exit_tree() -> void:
+	# Clear any synthetically held actions so they don't bleed into UI.
+	Input.action_release("right")
+	Input.action_release("left")
+	Input.action_release("jump")
 
 ## Automatically creates a SpriteFrames resource with all required animation states.
 func _auto_setup_sprite_frames() -> void:
@@ -214,18 +234,29 @@ func _on_foot_sensor_area_entered(area: Area2D) -> void:
 	if velocity.y > 50:
 		var enemy = area.get_parent()
 		if enemy and enemy.has_method("stomp_by"):
+			var cb := int(enemy.get("combo_bonus") if enemy.get("combo_bonus") != null else 0)
 			enemy.stomp_by(self)
 			_kick_impact_juice()
-			ComboSystem.notify_stomp(global_position, int(enemy.get("combo_bonus") if enemy.get("combo_bonus") != null else 0))
+			ComboSystem.notify_stomp(global_position, cb)
 			Global.stat_add("enemies_stomped", 1)
+			# Super-bouncy or bullet → smallsword; regular enemy → bounce
+			if cb >= 2:
+				AudioManager.play("smallsword", 0.0, 0.10)
+			else:
+				AudioManager.play("jump_normal", -4.0, 0.08)
 
 func _on_foot_sensor_body_entered(body: Node) -> void:
 	if is_dead: return
 	if velocity.y > 50 and body.has_method("stomp_by"):
+		var cb := int(body.get("combo_bonus") if body.get("combo_bonus") != null else 0)
 		body.stomp_by(self)
 		_kick_impact_juice()
-		ComboSystem.notify_stomp(global_position, int(body.get("combo_bonus") if body.get("combo_bonus") != null else 0))
+		ComboSystem.notify_stomp(global_position, cb)
 		Global.stat_add("enemies_stomped", 1)
+		if cb >= 2:
+			AudioManager.play("smallsword", 0.0, 0.10)
+		else:
+			AudioManager.play("jump_normal", -4.0, 0.08)
 
 # Brief slow-mo + chromatic kick on stomp. No-op if either unlock is off.
 func _kick_impact_juice() -> void:
@@ -287,6 +318,7 @@ var _foot_dust: CPUParticles2D = null
 func _setup_footstep_dust() -> void:
 	if not _use_footstep_dust: return
 	_foot_dust = CPUParticles2D.new()
+	_foot_dust.texture = Global.get_circle_texture()
 	_foot_dust.amount = 16
 	_foot_dust.lifetime = 0.42
 	_foot_dust.one_shot = false
@@ -344,7 +376,7 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_just_pressed("jump"):
 			velocity.y = -jumpMagnitude
 
-	var local_limit = get_local_lowest_y() + 192.0
+	var local_limit = get_local_lowest_y() + 192.0 + 200
 	if global_position.y > local_limit:
 		die(true)
 		return
@@ -362,12 +394,14 @@ func _physics_process(delta: float) -> void:
 		if velocity.x > auto_momentum:
 			velocity.x = auto_momentum
 
-	_was_on_floor = is_on_floor()
+	var _on_floor_before_jump := is_on_floor()
+	_was_on_floor = _on_floor_before_jump
 	_maybe_hit_flash()
 	super._physics_process(delta)
 
-	# Jump stretch
-	if not _was_on_floor and velocity.y < 0 and jumpTap:
+	# Jump stretch — jumpTap is the addon's one-frame flag: true only on the
+	# frame a jump was actually executed. velocity.y < 0 confirms upward launch.
+	if jumpTap and velocity.y < 0:
 		if dust_particles and _use_particles:
 			dust_particles.restart()
 			dust_particles.emitting = true
@@ -376,6 +410,11 @@ func _physics_process(delta: float) -> void:
 		if anim and _use_sprite_anims:
 			anim.frame = 0
 			anim.play("jump")
+		# Floor state before super: true = first jump, false = double jump.
+		if _on_floor_before_jump:
+			AudioManager.play("jump_normal", 0.0, 0.06)
+		else:
+			AudioManager.play("jump_spring", 0.0, 0.08)
 
 	# Land squash
 	if is_on_floor() and not _was_on_floor:
@@ -419,6 +458,8 @@ func shake_camera(intensity: float, duration: float) -> void:
 	_shake_timer = duration
 
 func _process(delta: float) -> void:
+	_debug_canvas.queue_redraw()
+	queue_redraw()
 	super._process(delta)
 	if is_dead:
 		ScreenFX.wobble_intensity = 0.0
@@ -472,26 +513,39 @@ func _process(delta: float) -> void:
 
 ## Pulse the player's color while they are airborne with at least one jump
 ## still banked but not all — a visual "you can still jump again" cue.
-## Uses jumpCount from the platformer addon (0 = no jumps left).
+## When the outline shader is active, pulses the outline color instead so the
+## sprite sprite itself is never tinted (which would be invisible through the shader).
 var _dj_pulse_t: float = 0.0
 var _dj_pulsing: bool = false
 var _dj_orig_modulate: Color = Color.WHITE
+var _dj_orig_outline: Color = Color(0.10, 0.07, 0.05, 1.0)
 func _tick_double_jump_pulse(delta: float) -> void:
-	var target: CanvasItem = anim if (anim and _use_sprite_player and anim.visible) else self
 	var can_pulse: bool = (not is_on_floor()) and jumpCount > 0 and jumpCount < jumps
 	if can_pulse:
 		if not _dj_pulsing:
 			_dj_pulsing = true
-			_dj_orig_modulate = target.modulate
 			_dj_pulse_t = 0.0
+			if _use_outline and anim and anim.material is ShaderMaterial:
+				_dj_orig_outline = (anim.material as ShaderMaterial).get_shader_parameter("outline_color")
+			var target: CanvasItem = anim if (anim and _use_sprite_player and anim.visible) else self
+			_dj_orig_modulate = target.modulate
 		_dj_pulse_t += delta
-		# ~2 Hz breathing between the base tint and a bright cyan-ish highlight.
 		var s: float = 0.5 + 0.5 * sin(_dj_pulse_t * TAU * 2.0)
-		var hi := Color(0.55, 1.15, 1.55, _dj_orig_modulate.a)
-		target.modulate = _dj_orig_modulate.lerp(hi, s * 0.85)
+		# Always pulse the sprite/primitive modulate for a visible color shift.
+		var target: CanvasItem = anim if (anim and _use_sprite_player and anim.visible) else self
+		var hi_mod := Color(0.55, 1.15, 1.55, _dj_orig_modulate.a)
+		target.modulate = _dj_orig_modulate.lerp(hi_mod, s * 0.85)
+		# Additionally pulse the outline color when the outline shader is active.
+		if _use_outline and anim and anim.material is ShaderMaterial:
+			var mat: ShaderMaterial = anim.material as ShaderMaterial
+			var hi_out := Color(0.10, 0.95, 1.80, 1.0)
+			mat.set_shader_parameter("outline_color", _dj_orig_outline.lerp(hi_out, s))
 	elif _dj_pulsing:
 		_dj_pulsing = false
+		var target: CanvasItem = anim if (anim and _use_sprite_player and anim.visible) else self
 		target.modulate = _dj_orig_modulate
+		if _use_outline and anim and anim.material is ShaderMaterial:
+			(anim.material as ShaderMaterial).set_shader_parameter("outline_color", _dj_orig_outline)
 
 ## Detect when the player passes close to a live hazard without touching it and
 ## roll for a brief slow-motion beat. Uses wall-time timers so the reset fires
@@ -519,9 +573,27 @@ func _trigger_near_miss() -> void:
 	Engine.time_scale = 0.25
 	if Global.is_unlocked("chromatic_aberration"):
 		ScreenFX.kick_chromatic(0.014, 0.5)
+	# Zoom in briefly during the slow-mo beat so the cinematic moment reads clearly.
+	if _use_zoom:
+		var cam := _get_camera()
+		if cam:
+			var zoom_in := _base_zoom * 1.22
+			var tw := create_tween()
+			tw.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
+			tw.tween_property(cam, "zoom", Vector2.ONE * zoom_in, 0.12) \
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	# 0.5s wall-time slow beat, then restore. Ignore time-scale so it fires reliably.
 	var t := get_tree().create_timer(0.5, true, false, true)
-	t.timeout.connect(func(): Engine.time_scale = 1.0)
+	t.timeout.connect(func():
+		Engine.time_scale = 1.0
+		# Return camera to base zoom after slow-mo ends.
+		if _use_zoom:
+			var cam := _get_camera()
+			if cam:
+				var tw2 := create_tween()
+				tw2.tween_property(cam, "zoom", Vector2.ONE * _base_zoom, 0.30) \
+					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	)
 
 func _update_dynamic_zoom(_delta: float) -> void:
 	var cam = _get_camera()
@@ -591,6 +663,9 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 	if cause == "" and is_fall:
 		cause = "the fall"
 	Global.last_death_cause = cause
+	# Randomize between hurt and monster_hurt for player death variety.
+	var death_sfx := "hurt_player" if randf() < 0.5 else "monster_hurt"
+	AudioManager.play(death_sfx, 0.0, 0.08)
 	Global.stat_add("deaths", 1)
 	if cause != "":
 		Global.stat_bucket("deaths_by_cause", cause, 1)
@@ -630,6 +705,7 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 
 		if _use_particles:
 			var poof = CPUParticles2D.new()
+			poof.texture = Global.get_circle_texture()
 			poof.emitting = true
 			poof.one_shot = true
 			poof.amount = 40
@@ -708,7 +784,10 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 				level_gen.current_seed = 0
 		get_tree().reload_current_scene()
 	else:
-		if game_over_ui and game_over_ui.has_method("show_game_over"):
+		if Global.is_tutorial_run():
+			var ov = preload("res://tutorial_death_overlay.gd").new()
+			get_tree().root.add_child(ov)
+		elif game_over_ui and game_over_ui.has_method("show_game_over"):
 			game_over_ui.show_game_over(awarded, distance_tiles)
 
 ## Best-guess origin for a bomb blast. Prefers the closest live bomb node in

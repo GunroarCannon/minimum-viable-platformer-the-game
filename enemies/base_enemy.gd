@@ -5,7 +5,7 @@ class_name BaseEnemy
 @export var gravity_scale: float = 1.0
 ## Bonus multiplier added to the combo when stomped. 0 = plain enemy, 2 = bouncy,
 ## 10 = super-bouncy trampoline enemy. Subclasses override in _ready().
-@export var combo_bonus: int = 0
+@export var combo_bonus: int = 1.5
 
 ## ── Tear-death configuration ───────────────────────────────────────────────
 ## Set these in each subclass _ready() to match the entity's visual size and colour.
@@ -56,6 +56,10 @@ func stomp_by(stomper: Node2D) -> void:
 	var body_vel = stomper.get("velocity")
 	if body_vel is Vector2:
 		stomper.set("velocity", Vector2(body_vel.x, -900)) # Big bounce
+		# Always restore one jump so the player can chain stomps even without double-jump.
+		var jumps_total = stomper.get("jumps")
+		if jumps_total != null and int(jumps_total) >= 1:
+			stomper.set("jumpCount", 1)
 
 # Called when player body sensor overlaps our hitbox.
 # Frogs, kobolds and bats KILL the player from any direction EXCEPT from the head.
@@ -80,8 +84,11 @@ func _display_name() -> String:
 
 ## Normal kill – poof particles. Pass torn=true to shatter into physics pieces.
 ## impact_vel is used to scatter pieces outward.
-func die(torn: bool = false, impact_vel: Vector2 = Vector2.ZERO) -> void:
+func die(torn: bool = false, impact_vel = Vector2.ZERO, instant_shatter: bool = false) -> void:
 	if _is_dying: return
+	if not impact_vel is Vector2:
+		impact_vel = Vector2.ZERO
+
 	_is_dying = true
 
 	# Blood splat lives one level up so it survives our queue_free().
@@ -97,6 +104,7 @@ func die(torn: bool = false, impact_vel: Vector2 = Vector2.ZERO) -> void:
 	else:
 		# Classic poof
 		var poof = CPUParticles2D.new()
+		poof.texture = Global.get_circle_texture()
 		poof.emitting = true
 		poof.one_shot = true
 		poof.amount = 24

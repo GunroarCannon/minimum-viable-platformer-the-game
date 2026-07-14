@@ -1,8 +1,8 @@
 extends Node
 
 ## Entry-point router. If the player has unlocked the UI, send them to the
-## main menu. Otherwise, drop them straight into the level so they can have
-## their first run (and their first death triggers the "buy UI" prompt).
+## main menu. Otherwise show the tutorial (first-time only) then drop them
+## straight into the level so their first run triggers the "buy UI" prompt.
 
 func _ready() -> void:
 	call_deferred("_route")

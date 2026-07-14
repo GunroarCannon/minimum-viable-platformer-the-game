@@ -22,6 +22,8 @@ SkillsDB="*res://skills_db.gd"
 ScreenFX="*res://screen_fx.gd"
 DebugOverlay="*res://debug_overlay.gd"
 ComboSystem="*res://combo_system.gd"
+LeaderboardService="*res://leaderboard_service.gd"
+AudioManager="*res://audio_manager.gd"
 
 [display]
 
@@ -39,5 +41,6 @@ pointing/emulate_touch_from_mouse=true
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0.1, 0.09, 0.08, 1)
 2d/snap/snap_2d_transforms_to_pixel=true

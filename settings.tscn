@@ -53,6 +53,7 @@ offset_right = 340.0
 offset_bottom = 260.0
 grow_horizontal = 2
 grow_vertical = 2
+clip_contents = true
 
 [node name="Scroll" type="ScrollContainer" parent="Root/Panel"]
 layout_mode = 1
@@ -65,12 +66,13 @@ offset_right = -28.0
 offset_bottom = -28.0
 grow_horizontal = 2
 grow_vertical = 2
+clip_contents = true
 horizontal_scroll_mode = 0
 
 [node name="V" type="VBoxContainer" parent="Root/Panel/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_vertical = 3
+size_flags_vertical = 0
 theme_override_constants/separation = 18
 
 [node name="MasterRow" type="HBoxContainer" parent="Root/Panel/Scroll/V"]

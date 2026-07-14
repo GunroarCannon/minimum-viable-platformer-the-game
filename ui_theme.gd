@@ -76,8 +76,14 @@ static func _polished_button_hover() -> StyleBoxFlat:
 static func _polished_button_pressed() -> StyleBoxFlat:
 	var sb = _polished_button()
 	sb.bg_color = COL_PUMPKIN
-	sb.border_color = COL_INK
+	sb.border_color = COL_PUMPKIN_HI
 	sb.shadow_size = 2
+	return sb
+
+static func _polished_button_disabled() -> StyleBoxFlat:
+	var sb = _polished_button()
+	sb.bg_color = COL_PEACH_DARK.lerp(Color(0.5, 0.5, 0.5), 0.5)
+	sb.border_color = COL_PEACH.lerp(Color(0.5, 0.5, 0.5), 0.5)
 	return sb
 
 static func _polished_panel() -> StyleBoxFlat:
@@ -158,10 +164,12 @@ static func _apply_polished(root: Node) -> void:
 			node.add_theme_stylebox_override("normal", _polished_button())
 			node.add_theme_stylebox_override("hover", _polished_button_hover())
 			node.add_theme_stylebox_override("pressed", _polished_button_pressed())
+			node.add_theme_stylebox_override("disabled", _polished_button_disabled())
 			node.add_theme_stylebox_override("focus", _polished_button_hover())
 			node.add_theme_color_override("font_color", COL_INK)
 			node.add_theme_color_override("font_hover_color", COL_INK)
 			node.add_theme_color_override("font_pressed_color", Color.WHITE)
+			node.add_theme_color_override("font_disabled_color", COL_INK.lerp(Color(0.5, 0.5, 0.5), 0.5))
 			node.add_theme_font_size_override("font_size", 26)
 			_attach_button_hover_tween(node)
 		elif node is Panel:
@@ -232,40 +240,37 @@ static func _attach_button_hover_tween(btn: Button) -> void:
 	btn.set_meta("ui_theme_hover_bound", true)
 	btn.pivot_offset = btn.size * 0.5
 	btn.mouse_entered.connect(func():
+		if btn.disabled: return
 		btn.pivot_offset = btn.size * 0.5
-		# Lift z + disable clipping on ancestor Controls so the scaled-up button
-		# isn't chopped off by ScrollContainers or clipped Panels around it.
-		_lift_button_visibility(btn, true)
+		btn.z_index = 5   # draw on top of sibling rows inside the VBox
+		# Disable clipping on the nearest clipping ancestors so the scaled
+		# button corners aren't chopped off by the panel or scroll container.
+		_set_ancestor_clip(btn, false)
 		var tw = btn.create_tween()
 		tw.tween_property(btn, "scale", Vector2(1.06, 1.06), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	)
 	btn.mouse_exited.connect(func():
+		if btn.disabled: return
+		btn.z_index = 0
+		_set_ancestor_clip(btn, true)
 		var tw = btn.create_tween()
 		tw.tween_property(btn, "scale", Vector2.ONE, 0.12).set_trans(Tween.TRANS_SINE)
-		tw.tween_callback(Callable(UITheme, "_lift_button_visibility").bind(btn, false))
 	)
 
-## Prevent hover-scaled buttons from being clipped by parent ScrollContainer /
-## clip_contents Controls. Walk up the ancestor chain; while lifted, remember
-## each ancestor whose clipping we disabled so we can restore it on exit.
-static func _lift_button_visibility(btn: Button, lift: bool) -> void:
-	if btn == null or not is_instance_valid(btn):
-		return
-	if lift:
-		btn.z_index = 5
-		var suppressed: Array = []
-		var p: Node = btn.get_parent()
-		while p != null and p is Control:
-			var c: Control = p
-			if c.clip_contents:
-				c.clip_contents = false
-				suppressed.append(c)
-			p = c.get_parent()
-		btn.set_meta("ui_theme_clip_suppressed", suppressed)
-	else:
-		btn.z_index = 0
-		var suppressed: Array = btn.get_meta("ui_theme_clip_suppressed", [])
-		for c in suppressed:
-			if c and is_instance_valid(c):
-				c.clip_contents = true
-		btn.remove_meta("ui_theme_clip_suppressed")
+## Walk up to the nearest Control ancestors that clip and toggle their clip_contents.
+## We only touch Panel and PanelContainer parents (the ones in settings/shop/game-over)
+## so we don't accidentally break top-level containers.
+static func _set_ancestor_clip(node: Node, clip: bool) -> void:
+	var p = node.get_parent()
+	var steps := 0
+	while p != null and steps < 6:
+		if p is Panel or p is PanelContainer:
+			(p as Control).clip_contents = clip
+		p = p.get_parent()
+		steps += 1
+
+## Kept for backwards compatibility; the clip-suppression logic has been
+## removed because it was disabling ScrollContainer clipping and revealing
+## all off-screen rows on hover.
+static func _lift_button_visibility(_btn: Button, _lift: bool) -> void:
+	pass

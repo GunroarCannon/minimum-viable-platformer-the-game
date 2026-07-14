@@ -17,13 +17,20 @@ func _ready() -> void:
 	btn_menu.pressed.connect(_to_menu)
 	btn_exit.pressed.connect(func(): get_tree().quit())
 	UITheme.apply_current(self)
+	AudioManager.connect_ui_clicks(self)
 
 func _input(event: InputEvent) -> void:
-	if not Global.is_unlocked("pause_menu"): return
-	if event.is_action_pressed("ui_back"):
-		if visible: _resume()
-		else: _show()
-		get_viewport().set_input_as_handled()
+	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):
+		if Global.is_unlocked("pause_menu"):
+			if visible: _resume()
+			else: _show()
+			get_viewport().set_input_as_handled()
+		else:
+			if Global.is_unlocked("ui"):
+				get_tree().change_scene_to_file("res://main_menu.tscn")
+			else:
+				get_tree().quit()
+			get_viewport().set_input_as_handled()
 
 func _show() -> void:
 	visible = true
@@ -41,8 +48,10 @@ func _resume() -> void:
 
 func _to_shop() -> void:
 	get_tree().paused = false
+	ComboSystem.reset()
 	get_tree().change_scene_to_file("res://shop.tscn")
 
 func _to_menu() -> void:
 	get_tree().paused = false
+	ComboSystem.reset()
 	get_tree().change_scene_to_file("res://main_menu.tscn")

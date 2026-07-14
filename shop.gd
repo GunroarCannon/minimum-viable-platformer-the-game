@@ -37,7 +37,7 @@ func _ready() -> void:
 	# Recommend button — inserted before the tokens label so it sits right of
 	# the title. Hidden by _refresh when nothing is purchasable.
 	_recommend_btn = Button.new()
-	_recommend_btn.text = "★ Recommend"
+	_recommend_btn.text = "Recommend"
 	_recommend_btn.custom_minimum_size = Vector2(180, 0)
 	_recommend_btn.add_theme_font_size_override("font_size", 22)
 	_recommend_btn.pressed.connect(_on_recommend)
@@ -54,7 +54,10 @@ func _ready() -> void:
 	_d_toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_d_toggle.visible = false
 	detail_vbox.add_child(_d_toggle)
-	_d_toggle.toggled.connect(_on_toggle_active)
+	_d_toggle.toggled.connect(func(p: bool):
+		AudioManager.play("switch_on" if p else "switch_off", 0.0, 0.04)
+		_on_toggle_active(p)
+	)
 
 	_d_toggle_hint = Label.new()
 	_d_toggle_hint.text = "Uncheck to disable without losing progress."
@@ -92,6 +95,8 @@ func _ready() -> void:
 	# Select root by default so the detail panel isn't empty.
 	tree_view.set_selected(SkillsDB.ROOT_ID)
 	_on_skill_selected(SkillsDB.ROOT_ID)
+	AudioManager.play_music("shop", 1.2)
+	AudioManager.connect_ui_clicks(self)
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):
@@ -178,9 +183,10 @@ func _refresh_detail() -> void:
 	d_cost.text = "Cost: %d ★" % cost
 	d_branch.text = "Branch: " + SkillsDB.BRANCH_NAMES.get(d["branch"], d["branch"])
 
-	var purchased := SkillsDB.is_purchased(sid)
-	var prereq := SkillsDB.prereqs_met(sid)
-	var affordable := SkillsDB.can_afford(sid)
+	var unlock_all: bool = Global.debug_toggles.get("unlock_all", false)
+	var purchased := SkillsDB.is_purchased(sid) or unlock_all
+	var prereq := SkillsDB.prereqs_met(sid) or unlock_all
+	var affordable := SkillsDB.can_afford(sid) or unlock_all
 
 	if purchased:
 		d_status.text = "OWNED"
@@ -227,10 +233,21 @@ func _refresh_detail() -> void:
 		d_buy.disabled = false
 		if _d_toggle: _d_toggle.visible = false
 		if _d_toggle_hint: _d_toggle_hint.visible = false
+		
+		# Jiggle tween to draw attention
+		d_buy.pivot_offset = d_buy.size * 0.5
+		var tw = create_tween()
+		tw.tween_property(d_buy, "rotation", 0.1, 0.05)
+		tw.tween_property(d_buy, "rotation", -0.1, 0.05)
+		tw.tween_property(d_buy, "rotation", 0.05, 0.05)
+		tw.tween_property(d_buy, "rotation", -0.05, 0.05)
+		tw.tween_property(d_buy, "rotation", 0.0, 0.05)
 
 func _on_toggle_active(pressed: bool) -> void:
 	var sid: String = tree_view.selected_id()
-	if sid == "" or not SkillsDB.is_purchased(sid): return
+	if sid == "": return
+	var unlock_all: bool = Global.debug_toggles.get("unlock_all", false)
+	if not SkillsDB.is_purchased(sid) and not unlock_all: return
 	var fkey = SkillsDB.get_feature_key(sid)
 	Global.set_feature_override(fkey, pressed)
 	tree_view.queue_redraw()
@@ -242,11 +259,87 @@ func _on_buy() -> void:
 	var sid: String = tree_view.selected_id()
 	if sid == "": return
 	if SkillsDB.purchase(sid):
+		AudioManager.play("ui_buy", 0.0, 0.04)
 		# small celebration tween on token label
 		var tw = create_tween()
 		tw.tween_property(tokens_label, "scale", Vector2(1.25, 1.25), 0.10).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(tokens_label, "scale", Vector2.ONE, 0.18)
+		# Enemy-unlock reward fanfare.
+		var d = SkillsDB.SKILLS.get(sid, null)
+		if d and d.get("branch", "") == "enemies":
+			_show_enemy_unlock_fanfare(sid, d)
+	else:
+		AudioManager.play("ui_glass", -4.0, 0.05)
 	_refresh()
+
+var _ENEMY_UNLOCK_MESSAGES := {
+	"enemies_basic":    ["Frogs & Kobolds\nhave entered the level!", "You now earn tokens faster!"],
+	"enemy_sprites":    ["Enemies now have\nproper sprite art!", "They look scarier now."],
+	"enemies_more":     ["Bats & Big Frogs\nare now gaurd the sky!", "You now earn tokens even faster!"],
+	"enemies_advanced": ["Bombs, Drills &\nShooters arrive!", "You gain tokens at the best rate."],
+	"smashers":         ["SMASHERS deployed!", "You have fully optimized token gain rate!"],
+	#"sprite_explosion": ["Bombs explode\nin glorious animation!", "Boom."],
+}
+
+func _show_enemy_unlock_fanfare(sid: String, d: Dictionary) -> void:
+	var msgs: Array = _ENEMY_UNLOCK_MESSAGES.get(sid, [d.get("name", sid) + "\nunlocked!"])
+	var headline: String = msgs[0] if msgs.size() > 0 else "Unlocked!"
+	var sub: String = msgs[1] if msgs.size() > 1 else ""
+
+	var overlay := PanelContainer.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	overlay.custom_minimum_size = Vector2(360, 0)
+	overlay.z_index = 200
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.10, 0.06, 0.16, 0.95)
+	sb.border_color = Color(0.95, 0.45, 0.55, 1.0)
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(18)
+	sb.content_margin_left = 24; sb.content_margin_right = 24
+	sb.content_margin_top = 20; sb.content_margin_bottom = 20
+	overlay.add_theme_stylebox_override("panel", sb)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	overlay.add_child(vbox)
+
+	var icon_lbl := Label.new()
+	icon_lbl.text = d.get("icon", "!!")
+	icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	icon_lbl.add_theme_font_size_override("font_size", 52)
+	icon_lbl.add_theme_color_override("font_color", Color(0.95, 0.45, 0.55))
+	vbox.add_child(icon_lbl)
+
+	var title_lbl := Label.new()
+	title_lbl.text = headline
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_lbl.add_theme_font_size_override("font_size", 26)
+	title_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.88))
+	vbox.add_child(title_lbl)
+
+	if sub != "":
+		var sub_lbl := Label.new()
+		sub_lbl.text = sub
+		sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		sub_lbl.add_theme_font_size_override("font_size", 18)
+		sub_lbl.add_theme_color_override("font_color", Color(0.75, 0.65, 0.80))
+		vbox.add_child(sub_lbl)
+
+	add_child(overlay)
+	overlay.modulate.a = 0.0
+	overlay.scale = Vector2(0.6, 0.6)
+	overlay.pivot_offset = overlay.size * 0.5
+
+	var tw2 := create_tween()
+	tw2.tween_property(overlay, "modulate:a", 1.0, 0.18)
+	tw2.parallel().tween_property(overlay, "scale", Vector2(1.08, 1.08), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw2.tween_property(overlay, "scale", Vector2.ONE, 0.10)
+	tw2.tween_interval(1.6)
+	tw2.tween_property(overlay, "modulate:a", 0.0, 0.28)
+	tw2.tween_callback(overlay.queue_free)
 
 func _on_back() -> void:
 	get_tree().change_scene_to_file("res://main_menu.tscn")

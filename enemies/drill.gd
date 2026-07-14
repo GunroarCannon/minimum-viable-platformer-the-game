@@ -11,6 +11,7 @@ var player: Node2D = null
 var death_y_limit: float = 4000.0
 
 var anim: AnimatedSprite2D = null
+var _engine_player: AudioStreamPlayer = null
 
 func _ready() -> void:
 	collision_layer = 0
@@ -62,19 +63,54 @@ func _process(delta: float) -> void:
 		"idle":
 			if abs(global_position.x - player.global_position.x) < trigger_distance and global_position.y < player.global_position.y:
 				state = "falling"
+				_start_engine()
 		"falling":
 			global_position.y += fall_speed * delta
 			if global_position.y > death_y_limit:
+				_stop_engine()
 				queue_free()
 
+func _start_engine() -> void:
+	if not Global.is_unlocked("sfx"): return
+	var engine_stream = load("res://assets/sounds/Engine.wav")
+	if engine_stream == null: return
+	_engine_player = AudioStreamPlayer.new()
+	_engine_player.stream = engine_stream
+	_engine_player.volume_db = -6.0
+	_engine_player.pitch_scale = 1.0 + randf_range(-0.05, 0.05)
+	_engine_player.finished.connect(func():
+		if _engine_player and is_instance_valid(_engine_player) and state == "falling":
+			_engine_player.play()
+	)
+	add_child(_engine_player)
+	_engine_player.play()
+
+func _stop_engine() -> void:
+	if _engine_player and is_instance_valid(_engine_player):
+		_engine_player.stop()
+		_engine_player.queue_free()
+		_engine_player = null
+
 func _on_body_entered(body: Node) -> void:
-	if state != "falling": return
 	if body is TileObject:
-		body.queue_free()
-	elif body is BaseEnemy:
-		body.die_torn(Vector2(0, fall_speed))
-	elif body.has_method("die"):
-		body.die(false, "a drill", true)
+		if state == "falling":
+			_stop_engine()
+			body.queue_free()
+		return
+	if state == "falling":
+		_stop_engine()
+		if body is BaseEnemy:
+			body.die_torn(Vector2(0, fall_speed))
+		elif body.has_method("die"):
+			body.die(false, "a drill", true)
+	elif state == "idle":
+		# Side contact while idle — player walks into drill tip.
+		if body.has_method("die") and not body.get("is_dead"):
+			# Only kill from the pointy bottom half, not landing on top.
+			if body is Node2D:
+				var bpos := (body as Node2D).global_position
+				if bpos.y > global_position.y - drill_size.y * 0.1:
+					body.die(false, "a drill", true)
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not anim:

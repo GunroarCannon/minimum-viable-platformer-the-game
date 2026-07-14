@@ -1,18 +1,18 @@
 shader_type canvas_item;
 
 // Dark fog that swallows the lower portion of the screen. Gives a sense of a
-// bottomless pit under the level. Bottom fades to near-black; upper 60% of the
-// screen is untouched.
+// bottomless pit under the level. Bottom fades to near-black; upper portion
+// is untouched. Uses a simple alpha-over approach so it works on all renderers.
 
-uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
-uniform float intensity : hint_range(0.0, 1.0) = 0.85;
-uniform float start_y   : hint_range(0.0, 1.0) = 0.55;  // where fog starts fading in
+uniform float intensity : hint_range(0.0, 1.0) = 0.88;
+uniform float start_y   : hint_range(0.0, 1.0) = 0.50;  // where fog starts fading in
 uniform float end_y     : hint_range(0.0, 1.0) = 1.00;  // fully dark below here
-uniform vec3  fog_color : source_color = vec3(0.03, 0.02, 0.06);
+uniform vec4  fog_color : source_color = vec4(0.03, 0.02, 0.06, 1.0);
 
 void fragment() {
-	vec3 col = texture(screen_tex, SCREEN_UV).rgb;
 	float t = smoothstep(start_y, end_y, UV.y);
-	col = mix(col, fog_color, t * intensity);
-	COLOR = vec4(col, 1.0);
+	// Use the smoothstep directly as alpha so it reaches a solid 1.0 at the bottom,
+	// fading completely to black rather than plateauing at 88% opacity.
+	float alpha = t;
+	COLOR = vec4(fog_color.rgb, alpha);
 }

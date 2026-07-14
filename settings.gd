@@ -42,16 +42,19 @@ func _ready() -> void:
 
 	debug_cb.button_pressed = Global.debug_toggles.get("show_overlay", true)
 	debug_cb.toggled.connect(func(p):
+		AudioManager.play("switch_on" if p else "switch_off", 0.0, 0.04)
 		Global.debug_toggles["show_overlay"] = p
 	)
 
 	primitives_cb.button_pressed = Global.use_primitives
 	primitives_cb.toggled.connect(func(p):
+		AudioManager.play("switch_on" if p else "switch_off", 0.0, 0.04)
 		Global.use_primitives = p
 	)
 
 	unlock_all_cb.button_pressed = Global.debug_toggles.get("unlock_all", false)
 	unlock_all_cb.toggled.connect(func(p):
+		AudioManager.play("switch_on" if p else "switch_off", 0.0, 0.04)
 		Global.debug_toggles["unlock_all"] = p
 	)
 
@@ -60,6 +63,10 @@ func _ready() -> void:
 		title_label.text = "Settings (progress reset)"
 	)
 	title_label.text = "Settings"
+
+	# Clip hover highlights to the scroll area so they don't bleed outside the panel.
+	$Root/Panel.clip_contents = true
+	$Root/Panel/Scroll.clip_contents = true
 
 	# ── Dynamic extra rows (added programmatically so the .tscn stays minimal) ──
 	var vbox: VBoxContainer = $Root/Panel/Scroll/V
@@ -111,12 +118,52 @@ func _ready() -> void:
 				Global.save_state()
 				UITheme.apply_current(self)
 		)
+	
+	if Global.is_unlocked("player_name"):
+		_add_name_edit_row(vbox)
+
+	if Global.is_unlocked("debug_mode"):
+		_add_checkbox_row(vbox, "Show colliders",
+			bool(Global.settings_cfg.get("show_collisions", false)),
+			func(v: bool) -> void:
+				Global.settings_cfg["show_collisions"] = v
+				Global.debug_toggles["show_collisions"] = v
+				Global.save_state()
+				_apply_collisions()
+		)
 
 	UITheme.apply_current(self)
 	_apply_audio()
+	AudioManager.connect_ui_clicks(self)
 
 func _list_fonts() -> Array:
 	return SkillsDB.list_font_files()
+
+func _add_name_edit_row(parent: VBoxContainer) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	var lbl := Label.new()
+	lbl.custom_minimum_size = Vector2(180, 0)
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.text = "Profile Name"
+	row.add_child(lbl)
+	
+	var edit_btn := Button.new()
+	edit_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	edit_btn.add_theme_font_size_override("font_size", 22)
+	edit_btn.text = LeaderboardService.get_player_name()
+	edit_btn.pressed.connect(func():
+		var dialog_script = load("res://enter_name_dialog.gd")
+		if dialog_script:
+			var dialog = dialog_script.new()
+			dialog.allow_cancel = true
+			dialog.name_submitted.connect(func(new_name):
+				edit_btn.text = new_name
+			)
+			add_child(dialog)
+	)
+	row.add_child(edit_btn)
+	parent.add_child(row)
 
 func _add_checkbox_row(parent: VBoxContainer, label_text: String, initial: bool, callback: Callable) -> void:
 	var row := HBoxContainer.new()
@@ -128,7 +175,10 @@ func _add_checkbox_row(parent: VBoxContainer, label_text: String, initial: bool,
 	row.add_child(lbl)
 	var cb := CheckBox.new()
 	cb.button_pressed = initial
-	cb.toggled.connect(callback)
+	cb.toggled.connect(func(v: bool):
+		AudioManager.play("switch_on" if v else "switch_off", 0.0, 0.04)
+		callback.call(v)
+	)
 	row.add_child(cb)
 	parent.add_child(row)
 
@@ -160,6 +210,10 @@ func _apply_audio() -> void:
 	if master_bus >= 0:
 		var v = float(Global.settings_cfg.get("master_volume", 0.8))
 		AudioServer.set_bus_volume_db(master_bus, linear_to_db(max(0.0001, v)))
+	AudioManager.apply_volumes()
+
+func _apply_collisions() -> void:
+	get_tree().debug_collisions_hint = false #bool(Global.settings_cfg.get("show_collisions", false))
 
 func _on_back() -> void:
 	get_tree().change_scene_to_file("res://main_menu.tscn")

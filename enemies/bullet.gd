@@ -71,6 +71,7 @@ func _custom_process(_delta: float) -> void:
 
 func stomp_by(stomper: Node2D) -> void:
 	if _is_dying: return
+	AudioManager.play("smallsword", 0.0, 0.10)
 	die()
 	var body_vel = stomper.get("velocity")
 	if body_vel is Vector2:

@@ -49,6 +49,14 @@ var _seed_best_label: Label = null
 ## Replay + favourite buttons (library-gated).
 var _replay_btn: Button = null
 var _save_btn: Button = null
+var btn_leaderboard: Button = null
+
+var _last_tokens_awarded: int = 0
+var _last_distance_m: int = 0
+
+var _profile_strip: PanelContainer = null
+var _profile_name_label: Label = null
+var _profile_edit_btn: Button = null
 
 ## Row containers used by the compact button layout — kept around so we can
 ## reparent buttons between rows without leaking old containers on repeated
@@ -67,8 +75,14 @@ func _ready() -> void:
 	btn_menu.pressed.connect(_on_menu)
 	btn_exit.pressed.connect(_on_exit)
 
+	btn_leaderboard = Button.new()
+	btn_leaderboard.pressed.connect(_on_leaderboard)
+	AudioManager.connect_ui_clicks(self)
+
 func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 	visible = true
+	_last_tokens_awarded = tokens_awarded
+	_last_distance_m = distance_m
 	var has_ui := Global.is_unlocked("ui")
 
 	# Sizing: let the ScrollWrap collapse to its content height so there's no
@@ -114,11 +128,15 @@ func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 	if has_ui:
 		_ensure_stats_card()
 		_populate_stats_card(tokens_awarded, distance_m, target_w)
+		_ensure_profile_strip()
+		_populate_profile_strip()
 		_ensure_seed_strip()
 		_populate_seed_strip()
+		_check_and_submit_leaderboard()
 		if _stats_card: _stats_card.visible = true
 	else:
 		if _stats_card: _stats_card.visible = false
+		if _profile_strip: _profile_strip.visible = false
 		if _seed_strip: _seed_strip.visible = false
 
 	_style_buttons(target_w, has_ui)
@@ -367,6 +385,7 @@ func _style_buttons(target_w: float, has_ui: bool) -> void:
 		_move_button(btn_exit,   buttons_box)
 		_hide_button(btn_shop)
 		_hide_button(btn_menu)
+		_hide_button(btn_leaderboard)
 		if _replay_btn: _replay_btn.visible = false
 		# Row containers unused in this mode.
 		_btn_row_primary.visible = false
@@ -374,6 +393,16 @@ func _style_buttons(target_w: float, has_ui: bool) -> void:
 		_style_single_button(btn_buy_ui,  StatIconScene.Kind.STAR,  target_w * 0.9, 64)
 		_style_single_button(btn_retry,   StatIconScene.Kind.REDO,  target_w * 0.9, 60)
 		_style_single_button(btn_exit,    StatIconScene.Kind.DOOR,  target_w * 0.9, 60)
+		btn_exit.text = "  Exit"
+		var pre_exit_sb := StyleBoxFlat.new()
+		pre_exit_sb.bg_color = Color(0.75, 0.18, 0.12, 0.90)
+		pre_exit_sb.border_color = Color(0.95, 0.30, 0.22, 0.80)
+		pre_exit_sb.set_border_width_all(2)
+		pre_exit_sb.set_corner_radius_all(10)
+		pre_exit_sb.content_margin_left = 12; pre_exit_sb.content_margin_right = 12
+		pre_exit_sb.content_margin_top = 8; pre_exit_sb.content_margin_bottom = 8
+		btn_exit.add_theme_stylebox_override("normal", pre_exit_sb)
+		btn_exit.add_theme_color_override("font_color", Color(1, 0.92, 0.88))
 		return
 
 	# Post-UI: build the button rows.
@@ -391,9 +420,13 @@ func _style_buttons(target_w: float, has_ui: bool) -> void:
 	_move_button(btn_retry, _btn_row_primary)
 	_move_button(btn_shop,  _btn_row_primary)
 
-	# Row 2: Menu + Exit
+	# Row 2: Menu + Exit + Leaderboard
 	_move_button(btn_menu, _btn_row_secondary)
 	_move_button(btn_exit, _btn_row_secondary)
+	if Global.is_unlocked("leaderboard"):
+		_move_button(btn_leaderboard, _btn_row_secondary)
+	else:
+		_hide_button(btn_leaderboard)
 
 	# Style each button for row use — small enough that 3 fit per row.
 	var row_btn_h: int = 56
@@ -409,9 +442,21 @@ func _style_buttons(target_w: float, has_ui: bool) -> void:
 		_style_row_button(btn_retry, retry_kind, row_btn_min_w, row_btn_h, row_btn_fs, btn_retry.text.strip_edges())
 	_style_row_button(btn_shop, StatIconScene.Kind.BAG, row_btn_min_w, row_btn_h, row_btn_fs, "Shop (%d ★)" % Global.tokens)
 
-	var sec_min_w: int = int(clamp(target_w / 2.3, 180, 320))
+	var sec_min_w: int = row_btn_min_w if Global.is_unlocked("leaderboard") else int(clamp(target_w / 2.3, 180, 320))
 	_style_row_button(btn_menu, StatIconScene.Kind.HOME, sec_min_w, 52, 20, "Menu")
 	_style_row_button(btn_exit, StatIconScene.Kind.DOOR, sec_min_w, 52, 20, "Exit")
+	# Make exit stand out with a reddish tint.
+	var exit_sb := StyleBoxFlat.new()
+	exit_sb.bg_color = Color(0.75, 0.18, 0.12, 0.90)
+	exit_sb.border_color = Color(0.95, 0.30, 0.22, 0.80)
+	exit_sb.set_border_width_all(2)
+	exit_sb.set_corner_radius_all(10)
+	exit_sb.content_margin_left = 12; exit_sb.content_margin_right = 12
+	exit_sb.content_margin_top = 8; exit_sb.content_margin_bottom = 8
+	btn_exit.add_theme_stylebox_override("normal", exit_sb)
+	btn_exit.add_theme_color_override("font_color", Color(1, 0.92, 0.88))
+	if Global.is_unlocked("leaderboard"):
+		_style_row_button(btn_leaderboard, StatIconScene.Kind.TROPHY, sec_min_w, 52, 20, "Leaderboard")
 
 	# Favourite button — full width under the secondary row (library-gated).
 	_ensure_save_button()
@@ -450,7 +495,7 @@ func _hide_button(btn: Button) -> void:
 ## Clear cached icon so we can restyle labels/sizes across mode switches.
 ## Existing icon children are also freed so we don't stack duplicates.
 func _reset_button_icons() -> void:
-	for b in [btn_buy_ui, btn_retry, btn_shop, btn_menu, btn_exit, _replay_btn, _save_btn]:
+	for b in [btn_buy_ui, btn_retry, btn_shop, btn_menu, btn_exit, _replay_btn, _save_btn, btn_leaderboard]:
 		if b == null: continue
 		if b.has_meta("ui_icon_node"):
 			var old = b.get_meta("ui_icon_node")
@@ -628,6 +673,105 @@ func _on_menu() -> void:
 
 func _on_exit() -> void:
 	get_tree().quit()
+
+func _on_leaderboard() -> void:
+	LeaderboardService.current_view_seed = Global.seed_to_code(Global.current_run_seed)
+	get_tree().change_scene_to_file("res://leaderboard_view.tscn")
+
+func _check_and_submit_leaderboard() -> void:
+	if not Global.is_unlocked("leaderboard"):
+		return
+		
+	if Global.is_unlocked("player_name"):
+		if LeaderboardService.has_unique_name():
+			_submit_score(LeaderboardService.get_player_name())
+		else:
+			# Prompt player to choose a unique profile name
+			var dialog_script = load("res://enter_name_dialog.gd")
+			if dialog_script:
+				var dialog = dialog_script.new()
+				dialog.allow_cancel = false # Force them to set a name to submit
+				dialog.name_submitted.connect(func(new_name):
+					_populate_profile_strip()
+					_submit_score(new_name)
+				)
+				add_child(dialog)
+	else:
+		# If player profile custom name is locked, submit anonymously
+		_submit_score("Anonymous")
+
+func _submit_score(p_name: String) -> void:
+	var seed_code = Global.seed_to_code(Global.current_run_seed)
+	var p_id = LeaderboardService.player_id
+	var score = Global.current_run_score
+	var distance = _last_distance_m
+	var combo = Global.current_run_highest_combo
+	
+	LeaderboardService.submit_level_result(seed_code, p_id, p_name, score, distance, combo)
+
+func _ensure_profile_strip() -> void:
+	if _profile_strip and is_instance_valid(_profile_strip):
+		return
+	_profile_strip = PanelContainer.new()
+	_profile_strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.90, 0.95, 0.91, 0.85)
+	sb.border_color = Color(0.36, 0.50, 0.20, 0.5)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(12)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	_profile_strip.add_theme_stylebox_override("panel", sb)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_profile_strip.add_child(row)
+
+	var star_icon := Control.new()
+	star_icon.set_script(StatIconScene)
+	star_icon.set("kind", StatIconScene.Kind.STAR)
+	star_icon.custom_minimum_size = Vector2(28, 28)
+	row.add_child(star_icon)
+
+	_profile_name_label = Label.new()
+	_profile_name_label.add_theme_font_size_override("font_size", 24)
+	_profile_name_label.add_theme_color_override("font_color", Color(0.15, 0.10, 0.06))
+	_profile_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_profile_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_profile_name_label)
+
+	_profile_edit_btn = Button.new()
+	_profile_edit_btn.text = "Edit Name"
+	_profile_edit_btn.custom_minimum_size = Vector2(110, 40)
+	_profile_edit_btn.add_theme_font_size_override("font_size", 18)
+	_profile_edit_btn.pressed.connect(_on_edit_profile_name)
+	row.add_child(_profile_edit_btn)
+
+	var stats_idx = _stats_card.get_index() if _stats_card else hint_label.get_index()
+	box.add_child(_profile_strip)
+	box.move_child(_profile_strip, stats_idx)
+
+func _populate_profile_strip() -> void:
+	if _profile_strip == null: return
+	if not Global.is_unlocked("player_name"):
+		_profile_strip.visible = false
+		return
+	_profile_strip.visible = true
+	_profile_name_label.text = "Player:  %s" % LeaderboardService.get_player_name()
+
+func _on_edit_profile_name() -> void:
+	var dialog_script = load("res://enter_name_dialog.gd")
+	if dialog_script:
+		var dialog = dialog_script.new()
+		dialog.allow_cancel = true
+		dialog.name_submitted.connect(func(new_name):
+			_populate_profile_strip()
+			_submit_score(new_name)
+		)
+		add_child(dialog)
 
 func _on_favourite_level() -> void:
 	for entry in Global.level_library:

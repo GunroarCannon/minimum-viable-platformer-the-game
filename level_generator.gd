@@ -142,12 +142,20 @@ const PRE_PROCGEN_INDICES := [0, 1, 6, 7, 4]
 var player: Node = null
 var dirt_tex = preload("res://assets/dirt_floor.png")
 var top_dirt_tex = preload("res://assets/top_dirt_floor.png")
+var _max_y: float = 0.0
 
 func _ready() -> void:
 	# Reset the per-run distance counter so token awards stay correct.
 	Global.last_run_distance = 0
 	generate_level()
 	setup_camera()
+	# Show the first-time tutorial overlay before the player can move.
+	# tutorial_screen.gd emits `finished` when the player taps through all
+	# slides, at which point the game is fully live.
+	if not Global.tutorial_seen:
+		var tscript = preload("res://tutorial_screen.gd")
+		var tut = tscript.new()
+		add_child(tut)
 
 
 # ─── ENTITY SPAWNING ────────────────────────────────────────────────────
@@ -293,6 +301,9 @@ func generate_level() -> void:
 	Global.current_run_seed = current_seed
 	Global.stat_bucket("seeds_visited", str(current_seed), 1)
 	Global.reset_run_state()
+	# Only start music if we're not already mid-gameplay track (e.g. quick retry).
+	if AudioManager._music_key != "gameplay":
+		AudioManager.play_music("gameplay", 1.5)
 
 	# Adaptive sky/palette drift (no-op unless "adaptive_sky" is unlocked).
 	var adaptive := Node.new()
@@ -425,12 +436,12 @@ func generate_level() -> void:
 				var row_c: String = pattern[ty]
 				for tx in range(block_w):
 					if row_c[tx] != '.': continue
-					# Need solid ground somewhere below in this column.
-					var has_floor_below := false
+					# Need solid ground at least 2 rows below (coin must float above floor).
+					var floor_dist := -1
 					for yy in range(ty + 1, block_h):
 						if pattern[yy][tx] == '#':
-							has_floor_below = true; break
-					if not has_floor_below: continue
+							floor_dist = yy - ty; break
+					if floor_dist < 2: continue
 					if rng.randf() > 0.06: continue
 					var cp = coin_scene.instantiate()
 					cp.position = Vector2(
@@ -492,11 +503,13 @@ func generate_level() -> void:
 	_link_strip_neighbors(all_strips)
 
 	var p = player_scene.instantiate()
+	spawn_pos.y -= 100
 	p.position = spawn_pos
 	p.set("game_over_ui", ui_instance)
 	p.set("death_y_limit", lowest_y + tile_size.y * 2)
 	add_child(p)
 	player = p
+	_max_y = lowest_y
 
 
 # ─── CAMERA ─────────────────────────────────────────────────────────────
@@ -510,7 +523,7 @@ func setup_camera() -> void:
 
 	cam.limit_left = 0
 	cam.limit_top = -10000000
-	cam.limit_bottom = 10000000
+	cam.limit_bottom = int(_max_y + tile_size.y * 1.5)
 	cam.position_smoothing_enabled = true
 	cam.position_smoothing_speed = 6.0
 

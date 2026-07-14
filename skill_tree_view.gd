@@ -73,19 +73,23 @@ func _world_pos(skill_id: String) -> Vector2:
 	return _camera_offset + p * _grid_scale()
 
 ## True if the node should be drawn / hit-testable right now.
-## Rule: ROOT always visible. Otherwise at least one direct parent must be
-## purchased. This hides deep branches until the immediately-upstream node
-## is bought.
+## Rule: ROOT always visible. A node is revealed only when ALL of its direct
+## prerequisites are purchased — so cross-branch skills stay hidden until the
+## player has unlocked every required branch, and deep nodes stay hidden until
+## the immediately-upstream path is fully cleared.
 func _is_revealed(sid: String) -> bool:
 	if Global.debug_toggles.get("unlock_all", false): return true
 	if sid == SkillsDB.ROOT_ID: return true
 	if SkillsDB.is_purchased(sid): return true
 	var d = SkillsDB.SKILLS.get(sid, null)
 	if d == null: return false
-	for r in d.get("requires", []):
-		if SkillsDB.is_purchased(r):
-			return true
-	return false
+	var reqs: Array = d.get("requires", [])
+	if reqs.is_empty(): return true
+	# All prereqs must be purchased for the node to be visible.
+	for r in reqs:
+		if not SkillsDB.is_purchased(r):
+			return false
+	return true
 
 func _zoom_around(new_zoom: float, focus: Vector2) -> void:
 	new_zoom = clamp(new_zoom, MIN_ZOOM, MAX_ZOOM)
@@ -241,8 +245,9 @@ func _draw() -> void:
 			if not SkillsDB.SKILLS.has(r): continue
 			if not _is_revealed(r): continue
 			var from_p = _world_pos(r)
-			var purchased_to = SkillsDB.is_purchased(sid)
-			var purchased_from = SkillsDB.is_purchased(r)
+			var _ua2: bool = Global.debug_toggles.get("unlock_all", false)
+			var purchased_to = SkillsDB.is_purchased(sid) or _ua2
+			var purchased_from = SkillsDB.is_purchased(r) or _ua2
 			var col = Color(0.30, 0.25, 0.18, 0.7)
 			var w = 4.0
 			if purchased_from and purchased_to:
@@ -333,9 +338,10 @@ func _draw_node(sid: String) -> void:
 	if p.x < -160 or p.x > size.x + 160 or p.y < -160 or p.y > size.y + 160:
 		return
 	var branch_col: Color = SkillsDB.get_branch_color(d.get("branch", "ui"))
-	var purchased := SkillsDB.is_purchased(sid)
-	var prereq := SkillsDB.prereqs_met(sid)
-	var affordable := SkillsDB.can_afford(sid)
+	var unlock_all: bool = Global.debug_toggles.get("unlock_all", false)
+	var purchased := SkillsDB.is_purchased(sid) or unlock_all
+	var prereq := SkillsDB.prereqs_met(sid) or unlock_all
+	var affordable := SkillsDB.can_afford(sid) or unlock_all
 
 	var alpha := 1.0
 	var polished := Global.is_unlocked("main_menu_extras")

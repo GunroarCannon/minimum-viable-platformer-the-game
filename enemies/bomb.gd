@@ -21,6 +21,12 @@ func _ready() -> void:
 	var hitbox_coll = $Hitbox/CollisionShape2D
 	if hitbox_coll and hitbox_coll.shape is RectangleShape2D:
 		hitbox_coll.shape.size = Vector2(74, 74)
+	# Expand the Hitbox to also detect CharacterBody2D bodies (enemies on layer 2,
+	# player body on layer 1). area_entered already covers the player body sensor (layer 8).
+	var hitbox = $Hitbox
+	if hitbox:
+		hitbox.collision_mask = hitbox.collision_mask | 1 | 2
+		hitbox.body_entered.connect(_on_body_entered_bomb)
 
 func _custom_process(delta: float) -> void:
 	if not player: return
@@ -47,23 +53,32 @@ func _custom_process(delta: float) -> void:
 			if timer <= 0:
 				_explode()
 
-## When the player bumps our hitbox from the side/above/anywhere except a stomp,
-## don't just kill them — light the fuse. The imminent explosion will kill them
-## next frame, and it feels much more like "a bomb went off in your face."
+## When anything touches our hitbox from the side/below, explode immediately.
+## Top contact (stomp) is handled by the foot sensor and triggers a normal stomp-die.
 func _on_hitbox_area_entered(area: Area2D) -> void:
 	if _is_dying: return
-	if state != "walking":
-		return
 	var body = area.get_parent()
 	if body == null: return
 	if not body.has_method("die"): return
 	if body.get("is_dead"): return
-	# Skip head-stomp: the foot sensor handles that case separately.
+	# Skip head-stomp: player centre clearly above our centre → foot sensor handles it.
 	if body.global_position.y < global_position.y - 30:
 		return
-	state = "loading"
-	timer = 0.08  # near-instant fuse
-	velocity.x = 0
+	# Immediate explosion — no fuse needed when something walks into us.
+	if state != "exploding":
+		_explode()
+
+func _on_body_entered_bomb(body: Node2D) -> void:
+	if _is_dying: return
+	# Ignore floor tiles and self.
+	if body == self: return
+	if body.is_in_group("solid_tiles"): return
+	if body.get("is_dead"): return
+	# Top contact = stomp handled by foot sensor. Side/below = explode.
+	if body.global_position.y < global_position.y - 30:
+		return
+	if state != "exploding":
+		_explode()
 
 const KNOCKBACK_IMPULSE := 3500.0
 const KNOCKBACK_LIFT := 1000.0
@@ -112,6 +127,7 @@ func _apply_explosion_knockback(radius: float) -> void:
 		_spawn_sprite_explosion()
 	else:
 		var poof = CPUParticles2D.new()
+		poof.texture = Global.get_circle_texture()
 		poof.emitting = true
 		poof.one_shot = true
 		poof.amount = 60

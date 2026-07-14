@@ -12,6 +12,7 @@ extends CanvasLayer
 var _library_btn: Button = null
 var _stats_btn: Button = null
 var _daily_btn: Button = null
+var _leaderboard_btn: Button = null
 var _bg_offset: float = 0.0
 
 
@@ -53,6 +54,22 @@ func _ready() -> void:
 		buttons.move_child(_stats_btn, buttons.get_child_count() - 3)
 		_promote_to_topbar()
 
+	# Leaderboard — inserted right after Stats (or before Settings if no Stats).
+	if Global.is_unlocked("leaderboard"):
+		_leaderboard_btn = Button.new()
+		_leaderboard_btn.text = "Leaderboard"
+		_leaderboard_btn.custom_minimum_size = Vector2(360, 64)
+		_leaderboard_btn.pressed.connect(_on_leaderboard)
+		buttons.add_child(_leaderboard_btn)
+		# Insert directly after Stats button if present, otherwise after Library, otherwise after Shop
+		if _stats_btn:
+			buttons.move_child(_leaderboard_btn, _stats_btn.get_index() + 1)
+		elif _library_btn:
+			buttons.move_child(_leaderboard_btn, _library_btn.get_index() + 1)
+		else:
+			# After Shop (index 1), before Settings
+			buttons.move_child(_leaderboard_btn, 2)
+
 	_refresh_labels()
 	UITheme.apply_current(self)
 
@@ -64,6 +81,9 @@ func _ready() -> void:
 
 	for b in [play_btn, shop_btn, settings_btn, exit_btn]:
 		b.focus_mode = Control.FOCUS_ALL
+
+	AudioManager.play_music("main_menu", 1.5)
+	AudioManager.connect_ui_clicks(self)
 
 
 func _refresh_labels() -> void:
@@ -92,11 +112,34 @@ func _promote_to_topbar() -> void:
 	gear.add_child(cog)
 
 	var quit_btn := Button.new()
-	quit_btn.text = "×"
+	quit_btn.text = "✕"
 	quit_btn.tooltip_text = "Quit"
 	quit_btn.custom_minimum_size = Vector2(64, 64)
-	quit_btn.flat = true
-	quit_btn.add_theme_font_size_override("font_size", 40)
+	quit_btn.add_theme_font_size_override("font_size", 34)
+	quit_btn.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0))
+	quit_btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
+	quit_btn.add_theme_color_override("font_pressed_color", Color(1.0, 0.8, 0.8))
+	var quit_normal := StyleBoxFlat.new()
+	quit_normal.bg_color = Color(0.55, 0.08, 0.08)
+	quit_normal.corner_radius_top_left = 8
+	quit_normal.corner_radius_top_right = 8
+	quit_normal.corner_radius_bottom_left = 8
+	quit_normal.corner_radius_bottom_right = 8
+	var quit_hover := StyleBoxFlat.new()
+	quit_hover.bg_color = Color(0.75, 0.12, 0.12)
+	quit_hover.corner_radius_top_left = 8
+	quit_hover.corner_radius_top_right = 8
+	quit_hover.corner_radius_bottom_left = 8
+	quit_hover.corner_radius_bottom_right = 8
+	var quit_pressed := StyleBoxFlat.new()
+	quit_pressed.bg_color = Color(0.40, 0.05, 0.05)
+	quit_pressed.corner_radius_top_left = 8
+	quit_pressed.corner_radius_top_right = 8
+	quit_pressed.corner_radius_bottom_left = 8
+	quit_pressed.corner_radius_bottom_right = 8
+	quit_btn.add_theme_stylebox_override("normal", quit_normal)
+	quit_btn.add_theme_stylebox_override("hover", quit_hover)
+	quit_btn.add_theme_stylebox_override("pressed", quit_pressed)
 	quit_btn.pressed.connect(_on_exit)
 	topbar.add_child(quit_btn)
 
@@ -158,6 +201,10 @@ func _on_stats() -> void:
 	get_tree().change_scene_to_file("res://stats_view.tscn")
 
 
+func _on_leaderboard() -> void:
+	get_tree().change_scene_to_file("res://leaderboard_view.tscn")
+
+
 func _on_daily() -> void:
 	var gen = load("res://level_generator.gd")
 	if gen:
@@ -180,3 +227,7 @@ func _daily_seed() -> int:
 
 func _on_exit() -> void:
 	get_tree().quit()
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):
+		get_tree().quit()

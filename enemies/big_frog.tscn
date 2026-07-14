@@ -1,6 +1,6 @@
-[gd_scene load_steps=3 format=3 uid="uid://b2c3d4e5f6g7"]
+[gd_scene load_steps=3 format=3 uid="uid://cm3ccsklbd542"]
 
-[ext_resource type="Script" uid="uid://y2z3w4v5u6t7" path="res://enemies/big_frog.gd" id="1_big_frog"]
+[ext_resource type="Script" uid="uid://bfccyvtylaen3" path="res://enemies/big_frog.gd" id="1_big_frog"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_big_frog"]
 size = Vector2(128, 128)

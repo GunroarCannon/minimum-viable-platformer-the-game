@@ -523,38 +523,38 @@ var SKILLS: Dictionary = {
 	# ═══════════════════════════════════════════════════════════════════
 	"enemies_basic": {
 		"id": "enemies_basic", "name": "Basic Enemies",
-		"desc": "Frogs and kobolds start appearing in levels.",
-		"cost": 2, "requires": ["ui"], "branch": "enemies",
+		"desc": "Frogs and kobolds start appearing in levels.\nRisk ↑, Reward ↑: earn +20% tokens every run.",
+		"cost": 1, "requires": ["ui"], "branch": "enemies",
 		"icon": "BE",
-		"priority": 90, "non_toggleable": true,
+		"priority": 90, "non_toggleable": true, "cost_override": 1,
 	},
 	"enemy_sprites": {
 		"id": "enemy_sprites", "name": "Enemy Sprites",
 		"desc": "Enemies, spikes and smashers get their proper sprite art.",
 		"cost": 2, "requires": ["enemies_basic"], "branch": "enemies",
 		"icon": "ES",
-		"priority": 60,
+		"priority": 60, "cost_override": 2,
 	},
 	"enemies_more": {
 		"id": "enemies_more", "name": "More Enemies",
-		"desc": "Bats and big frogs join the party.",
-		"cost": 3, "requires": ["enemies_basic"], "branch": "enemies",
+		"desc": "Bats and big frogs join the party.\nRisk ↑↑, Reward ↑↑: another +20% token gain (40% total).",
+		"cost": 2, "requires": ["enemies_basic"], "branch": "enemies",
 		"icon": "ME",
-		"priority": 66,
+		"priority": 66, "cost_override": 2,
 	},
 	"enemies_advanced": {
 		"id": "enemies_advanced", "name": "Adv. Enemies",
-		"desc": "Bombs, shooters, drills and jumpers.",
-		"cost": 4, "requires": ["enemies_more"], "branch": "enemies",
+		"desc": "Bombs, shooters, drills and jumpers.\n+20% token gain (60% total over base).",
+		"cost": 3, "requires": ["enemies_more"], "branch": "enemies",
 		"icon": "AE",
-		"priority": 52,
+		"priority": 52, "cost_override": 3,
 	},
 	"smashers": {
 		"id": "smashers", "name": "Smashers",
-		"desc": "Ceiling hammers that drop when you walk under them.",
-		"cost": 3, "requires": ["enemies_more"], "branch": "enemies",
+		"desc": "Ceiling hammers that drop when you walk under them.\n+20% token gain (80% total over base). Max enemy bonus.",
+		"cost": 2, "requires": ["enemies_more"], "branch": "enemies",
 		"icon": "SM",
-		"priority": 48,
+		"priority": 48, "cost_override": 2,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -588,6 +588,20 @@ var SKILLS: Dictionary = {
 		"icon": "ST",
 		"priority": 55,
 	},
+	"player_name": {
+		"id": "player_name", "name": "Player Identity",
+		"desc": "Set your unique profile name.\nPersonalises your local game — required before accessing global leaderboards.",
+		"cost": 2, "requires": ["stats_menu"], "branch": "ui",
+		"icon": "ID",
+		"priority": 53,
+	},
+	"leaderboard": {
+		"id": "leaderboard", "name": "Leaderboard",
+		"desc": "Unlocks level leaderboards and global rankings. Compete with players worldwide.",
+		"cost": 3, "requires": ["player_name"], "branch": "ui",
+		"icon": "LB",
+		"priority": 51,
+	},
 	"fast_mode": {
 		"id": "fast_mode", "name": "Fast Mode",
 		"desc": "Unlocks a toggle in Settings: run faster and earn more points per tile.",
@@ -601,6 +615,13 @@ var SKILLS: Dictionary = {
 		"cost": 2, "requires": ["ui"], "branch": "ui",
 		"icon": "FT",
 		"priority": 30,
+	},
+	"debug_mode": {
+		"id": "debug_mode", "name": "Debug Mode",
+		"desc": "Unlocks a Debug Mode toggle in Settings.\nWhen on, every physics collision shape in the game is drawn on screen.",
+		"cost_override": 5, "requires": ["hud"], "branch": "ui",
+		"icon": "DB",
+		"priority": 18,
 	},
 	"sprite_explosion": {
 		"id": "sprite_explosion", "name": "Sprite Explosions",
@@ -648,6 +669,27 @@ var SKILLS: Dictionary = {
 		"icon": "BT",
 		"priority": 28,
 	},
+	"sfx": {
+		"id": "sfx", "name": "Sound Effects",
+		"desc": "Adds footsteps, jump thuds, stomp crunches, UI clicks, and all in-game sound effects.",
+		"cost": 3, "requires": ["juice_squash"], "branch": "juice",
+		"icon": "SF",
+		"priority": 76,
+	},
+	"music": {
+		"id": "music", "name": "Music",
+		"desc": "Background music plays in menus, gameplay and the shop — fades between scenes.",
+		"cost": 4, "requires": ["sfx"], "branch": "juice",
+		"icon": "MU",
+		"priority": 74,
+	},
+	"wind_effect": {
+		"id": "wind_effect", "name": "Wind Effect",
+		"desc": "High combos summon rushing wind lines across the screen and an ambient wind roar.",
+		"cost": 3, "requires": ["combo_system", "sfx"], "branch": "juice",
+		"icon": "WE",
+		"priority": 26,
+	},
 	"skill_tree_polish": {
 		"id": "skill_tree_polish", "name": "Skill Tree Polish",
 		"desc": "Curved bezier connections, animated pulse on active paths.",
@@ -668,6 +710,24 @@ var SKILLS: Dictionary = {
 		"cost": 3, "requires": ["impact_freeze"], "branch": "camera",
 		"icon": "NM",
 		"priority": 42,
+	},
+
+	# ═══════════════════════════════════════════════════════════════════
+	# SPECIAL SHADERS (deep shaders branch)
+	# ═══════════════════════════════════════════════════════════════════
+	"pixel_dither": {
+		"id": "pixel_dither", "name": "Pixel Dither",
+		"desc": "Bayer ordered dithering reduces the colour palette to a lo-fi retro look.\nLike running on an ancient handheld.",
+		"cost": 4, "requires": ["crt_filter"], "branch": "shaders",
+		"icon": "PD",
+		"priority": 22, "cost_override": 4,
+	},
+	"neon_glow": {
+		"id": "neon_glow", "name": "Neon Glow",
+		"desc": "Bright game elements bleed a soft additive halo into surrounding pixels.\nGives everything a synthwave neon-lit feel.",
+		"cost": 4, "requires": ["chromatic_aberration"], "branch": "shaders",
+		"icon": "NG",
+		"priority": 20, "cost_override": 4,
 	},
 }
 

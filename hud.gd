@@ -13,6 +13,7 @@ var _mult_label: Label = null
 var _best_flag: Label = null   # rotated side indicator
 var _best_flag_state: String = ""    # last committed state ("", "ALMOST!", "NEW BEST!")
 var _best_flag_intro_played: bool = false
+var _run_tokens_label: Label = null   # "+N ★" live run gain
 
 func _ready() -> void:
 	layer = 30
@@ -27,9 +28,7 @@ func _ready() -> void:
 
 	_build_mult_label()
 	_build_best_flag()
-
-	if _is_touch_platform():
-		_build_touch_controls()
+	_build_run_tokens_label()
 
 func _build_mult_label() -> void:
 	_mult_label = Label.new()
@@ -41,6 +40,18 @@ func _build_mult_label() -> void:
 	_mult_label.text = ""
 	_mult_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$Root/Bar.add_child(_mult_label)
+
+func _build_run_tokens_label() -> void:
+	_run_tokens_label = Label.new()
+	_run_tokens_label.add_theme_font_override("font", FONT_KA1)
+	_run_tokens_label.add_theme_font_size_override("font_size", 22)
+	_run_tokens_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.30))
+	_run_tokens_label.add_theme_color_override("font_outline_color", Color(0.05, 0.02, 0.08))
+	_run_tokens_label.add_theme_constant_override("outline_size", 5)
+	_run_tokens_label.text = ""
+	_run_tokens_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Place it below the tokens label inside the Bar container.
+	$Root/Bar.add_child(_run_tokens_label)
 
 func _build_best_flag() -> void:
 	_best_flag = Label.new()
@@ -61,44 +72,6 @@ func _build_best_flag() -> void:
 	_best_flag_state = ""
 	_best_flag_intro_played = false
 
-func _is_touch_platform() -> bool:
-	return OS.get_name() in ["Android", "iOS"] or DisplayServer.is_touchscreen_available()
-
-func _build_touch_controls() -> void:
-	var pad := Control.new()
-	pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(pad)
-
-	var jump := Button.new()
-	jump.text = "▲"
-	jump.custom_minimum_size = Vector2(160, 160)
-	jump.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	jump.position = Vector2(-200, -200)
-	jump.modulate.a = 0.55
-	jump.button_down.connect(func(): Input.action_press("jump"))
-	jump.button_up.connect(func():   Input.action_release("jump"))
-	pad.add_child(jump)
-
-	var left := Button.new()
-	left.text = "◀"
-	left.custom_minimum_size = Vector2(140, 140)
-	left.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	left.position = Vector2(40, -180)
-	left.modulate.a = 0.55
-	left.button_down.connect(func(): Input.action_press("left"))
-	left.button_up.connect(func():   Input.action_release("left"))
-	pad.add_child(left)
-
-	var right := Button.new()
-	right.text = "▶"
-	right.custom_minimum_size = Vector2(140, 140)
-	right.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	right.position = Vector2(200, -180)
-	right.modulate.a = 0.55
-	right.button_down.connect(func(): Input.action_press("right"))
-	right.button_up.connect(func():   Input.action_release("right"))
-	pad.add_child(right)
 
 func _process(_delta: float) -> void:
 	if not _shown: return
@@ -110,6 +83,13 @@ func _process(_delta: float) -> void:
 		var tw = create_tween()
 		tw.tween_property(tokens_label, "scale", Vector2(1.4, 1.4), 0.10).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(tokens_label, "scale", Vector2.ONE, 0.20)
+	# Live run token gain counter.
+	if _run_tokens_label:
+		var gained: int = Global.run_tokens_gained
+		if gained > 0:
+			_run_tokens_label.text = "+%d ★" % gained
+		else:
+			_run_tokens_label.text = ""
 
 	# Combo multiplier chip.
 	if _mult_label:

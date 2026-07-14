@@ -225,6 +225,16 @@ func _add_row(vbox: VBoxContainer, entry: Dictionary) -> void:
 	replay_btn.pressed.connect(_on_replay.bind(seed_val))
 	hbox.add_child(replay_btn)
 
+	if Global.is_unlocked("leaderboard"):
+		var lb_btn := Button.new()
+		lb_btn.text = "Leaderboard"
+		lb_btn.custom_minimum_size = Vector2(170, 52)
+		lb_btn.pressed.connect(func():
+			LeaderboardService.current_view_seed = Global.seed_to_code(seed_val)
+			get_tree().change_scene_to_file("res://leaderboard_view.tscn")
+		)
+		hbox.add_child(lb_btn)
+
 func _show_toast(text: String) -> void:
 	if _toast == null: return
 	_toast.text = text

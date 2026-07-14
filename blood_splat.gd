@@ -27,6 +27,7 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 
 	# ── Main burst (circular emission) ───────────────────────────────────────
 	var p := CPUParticles2D.new()
+	p.texture = Global.get_circle_texture()
 	p.emitting = true
 	p.one_shot = true
 	p.amount = 32
@@ -42,8 +43,8 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 	p.gravity = Vector2(0, 900)
 	p.initial_velocity_min = 220.0
 	p.initial_velocity_max = 540.0
-	p.scale_amount_min = 5.0
-	p.scale_amount_max = 14.0
+	p.scale_amount_min = 0.4
+	p.scale_amount_max = 2.0
 	p.damping_min = 10.0
 	p.damping_max = 26.0
 	p.color = Color(0.78, 0.10, 0.10)
@@ -60,6 +61,7 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 
 	# ── Tight spurt (fast narrow plume for wet impact feel) ──────────────────
 	var spurt := CPUParticles2D.new()
+	spurt.texture = Global.get_circle_texture()
 	spurt.emitting = true
 	spurt.one_shot = true
 	spurt.amount = 12
@@ -72,8 +74,8 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 	spurt.gravity = Vector2(0, 600)
 	spurt.initial_velocity_min = 500.0
 	spurt.initial_velocity_max = 840.0
-	spurt.scale_amount_min = 4.0
-	spurt.scale_amount_max = 9.0
+	spurt.scale_amount_min = 1.0
+	spurt.scale_amount_max = 2.0
 	spurt.color = Color(0.90, 0.15, 0.15)
 	parent.add_child(spurt)
 	spurt.global_position = pos
@@ -82,6 +84,7 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 	# ── Velocity trail (optional, disabled for performance via settings) ──────
 	if Global.settings_cfg.get("blood_trail", true):
 		var trail := CPUParticles2D.new()
+		trail.texture = Global.get_circle_texture()
 		trail.emitting = true
 		trail.one_shot = true
 		trail.amount = 18
@@ -98,8 +101,8 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 		trail.gravity = Vector2(0, 380)
 		trail.initial_velocity_min = 70.0
 		trail.initial_velocity_max = 220.0
-		trail.scale_amount_min = 3.0
-		trail.scale_amount_max = 7.0
+		trail.scale_amount_min = 0.4
+		trail.scale_amount_max = 3.0
 		trail.color = Color(0.72, 0.08, 0.08, 0.8)
 		var trail_ramp := Gradient.new()
 		trail_ramp.set_color(0, Color(0.75, 0.10, 0.10, 0.9))

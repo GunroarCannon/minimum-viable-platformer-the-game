@@ -22,28 +22,55 @@ var _wobble_time: float = 0.0
 
 func _ready() -> void:
 	layer = 90
-	_add_pass("color_grading",        preload("res://shaders/color_grading.gdshader"))
-	_add_pass("chromatic_aberration", preload("res://shaders/chromatic.gdshader"))
-	_add_pass("fog_cover",            preload("res://shaders/fog_cover.gdshader"))
-	_add_pass("vignette",             preload("res://shaders/vignette.gdshader"))
-	# Skip screen-sampling shaders on lightweight targets (web + mobile) — they
-	# tank the frame rate and don't compose well with the GL Compat renderer's
-	# framebuffer round-trips on those platforms.
+	# GL Compatibility requires a BackBufferCopy BEFORE each pass that reads
+	# hint_screen_texture. Without one per-pass, every ColorRect after the first
+	# samples the same frozen initial frame — i.e. all effects after the first
+	# one read black / stale data. The chromatic aberration pass added a second
+	# screen-reading shader without adding its own BBC, which caused the chain
+	# to break. Now each _try_add_pass automatically inserts its own BBC.
+	_try_add_pass("color_grading",        "res://shaders/color_grading.gdshader")
+	_try_add_pass("chromatic_aberration", "res://shaders/chromatic.gdshader")
+	_try_add_pass("fog_cover",            "res://shaders/fog_cover.gdshader")
+	_try_add_pass("vignette",             "res://shaders/vignette.gdshader")
+	# Skip screen-sampling shaders on lightweight targets (web + mobile).
 	if not _is_lightweight_target():
-		_add_pass("crt_filter",       preload("res://shaders/crt.gdshader"))
-		_add_pass("wobble_shader",    preload("res://shaders/wobble.gdshader"))
+		_try_add_pass("crt_filter",    "res://shaders/crt.gdshader")
+		_try_add_pass("wobble_shader", "res://shaders/wobble.gdshader")
+		_try_add_pass("pixel_dither",  "res://shaders/pixel_dither.gdshader")
+		_try_add_pass("neon_glow",     "res://shaders/neon_glow.gdshader")
 	set_process(true)
+
+## Load a shader by path and register a pass. Silently skips missing/broken shaders
+## so one bad file can never knock out the other effects.
+func _try_add_pass(feature_key: String, path: String) -> void:
+	var sh: Shader = load(path) as Shader
+	if sh == null:
+		push_warning("ScreenFX: could not load shader '%s' — pass skipped." % path)
+		return
+	_add_pass(feature_key, sh)
 
 func _is_lightweight_target() -> bool:
 	var name := OS.get_name()
 	return name in ["Web", "Android", "iOS"]
 
 func _add_pass(feature_key: String, sh: Shader) -> void:
+	# Each pass needs its own BackBufferCopy immediately before the ColorRect.
+	# In GL Compatibility, screen_tex is only populated by the most recent BBC
+	# that completed before this draw call. A single BBC at the start only
+	# captures the cleared viewport, so every pass after the first reads stale
+	# data. By inserting a BBC here, each pass gets the composited output of all
+	# previous passes.
+	var bbc := BackBufferCopy.new()
+	bbc.copy_mode = BackBufferCopy.COPY_MODE_VIEWPORT
+	add_child(bbc)
+
 	var r = ColorRect.new()
 	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# Transparent base so that if the shader ever fails to compile or fails to
-	# sample screen_tex, we get "no visible effect" instead of a full white flash.
+	# Transparent base: if a shader fails to compile, the pass vanishes
+	# instead of producing a full-screen white flash.
 	r.color = Color(1, 1, 1, 0)
+	# Start hidden; _process enables each pass only when its unlock is active.
+	r.visible = false
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var mat = ShaderMaterial.new()
 	mat.shader = sh
@@ -62,6 +89,8 @@ func _process(delta: float) -> void:
 		# for this pass. Intensity=0 is now a proper identity in the shader, so
 		# leaving it visible is cheap and safe.
 		var enabled: bool = Global.is_unlocked(key) and not Global.use_primitives
+		if key == "fog_cover" and get_tree().current_scene and get_tree().current_scene.name != "Level":
+			enabled = false
 		if r.visible != enabled:
 			r.visible = enabled
 
@@ -87,3 +116,9 @@ func kick_chromatic(amount: float = 0.022, duration: float = 0.35) -> void:
 	if duration <= 0.0: duration = 0.001
 	_chromatic_kick = clamp(amount, 0.0, CHROMATIC_MAX - CHROMATIC_BASE)
 	_chromatic_decay = _chromatic_kick / duration
+
+## Trigger the glitch visual + audio sequence.
+## Bumps chromatic aberration hard, then plays glitch SFX + glitch music → silence.
+func trigger_glitch(go_silent: bool = true) -> void:
+	kick_chromatic(CHROMATIC_MAX - CHROMATIC_BASE, 0.8)
+	AudioManager.play_glitch_sequence(go_silent)

@@ -27,14 +27,14 @@ extends Node
 
 # ─── DEBUG ──────────────────────────────────────────────────────────────
 ## Show debug overlay (FPS, memory, velocity, zoom, momentum, stun)
-@export var debug_text: bool = true
+@export var debug_text: bool = false
 
 ## Persistent dictionary of debug toggles, easy to extend with new features.
 @export var debug_toggles: Dictionary = {
 	"auto_restart": false,
 	"keep_seed": false,
 	"show_collisions": false,
-	"show_overlay": true,
+	"show_overlay": false,
 	"unlock_all": false,
 }
 
@@ -52,11 +52,39 @@ var feature_overrides: Dictionary = {}
 ## True the first time the player has died at least once.
 var first_death_done: bool = false
 
+## True once the intro tutorial has been shown.
+var tutorial_seen: bool = false
+
 ## Best distance ever (in tile-units).
 var best_distance: int = 0
 
+var _circle_tex: GradientTexture2D = null
+
+func get_circle_texture() -> Texture2D:
+	if not _circle_tex:
+		var grad = Gradient.new()
+		# Remove the two default points Godot inserts (white@0, black@1),
+		# then define a clean solid-centre → transparent-edge radial profile.
+		grad.remove_point(1)
+		grad.remove_point(0)
+		grad.add_point(0.0,  Color(1, 1, 1, 1))
+		grad.add_point(0.48, Color(1, 1, 1, 1))
+		grad.add_point(0.5,  Color(1, 1, 1, 0))
+		grad.add_point(1.0,  Color(1, 1, 1, 0))
+		_circle_tex = GradientTexture2D.new()
+		_circle_tex.gradient = grad
+		_circle_tex.fill = GradientTexture2D.FILL_RADIAL
+		_circle_tex.fill_from = Vector2(0.5, 0.5)
+		_circle_tex.fill_to = Vector2(1, 0.5)
+		_circle_tex.width = 16
+		_circle_tex.height = 16
+	return _circle_tex
+
 ## Score for the current run — accumulates tokens*mult + stomp bonuses.
 var current_run_score: int = 0
+
+## Highest combo achieved in the current run.
+var current_run_highest_combo: int = 0
 
 ## Best score ever recorded, across every level.
 var best_score_ever: int = 0
@@ -66,6 +94,9 @@ var current_seed_best_score: int = 0
 
 ## Tracks last awarded distance so we don't double-award mid-run.
 var last_run_distance: int = 0
+
+## Tokens accumulated in the current live run (resets on new run). Shown in HUD.
+var run_tokens_gained: int = 0
 
 ## Human-readable cause of the last death, shown on the game-over screen.
 var last_death_cause: String = ""
@@ -111,6 +142,7 @@ var settings_cfg: Dictionary = {
 	"blood_trail": true,
 	"font_choice": "default",
 	"fast_mode": false,
+	"show_collisions": false,
 }
 
 ## Persisted lifetime stats — displayed in the Stats menu.
@@ -170,6 +202,10 @@ func _ready() -> void:
 	print("[Global] _ready() called — initialising input map")
 	_initialize_input_map()
 	load_state()
+	# Restore collision-debug state so it persists across scenes.
+	var _col_on := bool(settings_cfg.get("show_collisions", false))
+	get_tree().debug_collisions_hint = false#_col_on
+	debug_toggles["show_collisions"] = false#_col_on
 	set_process(true)
 	print("[Global] _ready() complete | tokens=", tokens, " unlocked=", unlocked)
 
@@ -192,6 +228,7 @@ func save_state() -> void:
 		"unlocked": unlocked,
 		"feature_overrides": feature_overrides,
 		"first_death_done": first_death_done,
+		"tutorial_seen": tutorial_seen,
 		"best_distance": best_distance,
 		"best_score_ever": best_score_ever,
 		"settings_cfg": settings_cfg,
@@ -214,6 +251,7 @@ func load_state() -> void:
 	unlocked = blob.get("unlocked", {})
 	feature_overrides = blob.get("feature_overrides", {})
 	first_death_done = bool(blob.get("first_death_done", false))
+	tutorial_seen = bool(blob.get("tutorial_seen", false))
 	best_distance = int(blob.get("best_distance", 0))
 	best_score_ever = int(blob.get("best_score_ever", 0))
 	for k in blob.get("settings_cfg", {}).keys():
@@ -253,10 +291,18 @@ func stat_bucket(bucket_key: String, entry_key: String, delta: int = 1) -> void:
 
 ## ─── FEATURE QUERIES ───────────────────────────────────────────────────
 
+func is_tutorial_run() -> bool:
+	return not tutorial_seen
+
 func is_unlocked(feature_key: String) -> bool:
-	if debug_toggles.get("unlock_all", false):
-		return true
-	if not bool(unlocked.get(feature_key, false)):
+	var owned: bool = debug_toggles.get("unlock_all", false) or bool(unlocked.get(feature_key, false))
+	if is_tutorial_run():
+		var fake_unlocks := ["hud", "pause_menu", "juice_squash", "hit_flash", "impact_freeze", "motion_trail", "footstep_dust", "tear_effects", "blood_splats", "blood_marks", "camera_shake", "dynamic_zoom", "vignette",  "color_grading", "crt_filter", "wobble_shader", "double_jump", "wall_jump", "drawn_floors", "foliage", "particles", "player_sprite", "sprite_animations", "outline", "parallax", "clouds", "sky_color", "enemies_basic", "enemy_sprites", "enemies_more", "enemies_advanced", "smashers", "leaderboard", "fast_mode", "font_select", "sprite_explosion",  "adaptive_sky", "combo_system", "combo_bounce", "fog_cover", "near_miss_slowmo", "sfx", "music", "wind_effect"]
+		# ["hud", "player_sprite", "sprite_animations", "particles", "juice_squash", "double_jump", "sprint", "enemies_basic", "enemies_more", "enemies_advanced", "procgen", "color_grading", "vignette", "fog_cover", "dynamic_zoom", "camera_shake"]
+		if feature_key in fake_unlocks:
+			owned = true
+
+	if not owned:
 		return false
 	# Respect per-feature toggle (default true = enabled).
 	return bool(feature_overrides.get(feature_key, true))
@@ -290,8 +336,16 @@ func add_tokens(n: int) -> void:
 	var cs = get_node_or_null("/root/ComboSystem")
 	if cs and cs.has_method("token_multiplier"):
 		mult = int(cs.token_multiplier())
-	var earned := n * mult
+	# Enemy-unlock bonus: each tier of enemy added to the game rewards +20%
+	# token gain as a thank-you for making the run harder. Tiers stack, so
+	# owning all four gives +80% on top of the base rate.
+	var enemy_bonus: float = 1.0
+	for ekey in ["enemies_basic", "enemies_more", "enemies_advanced", "smashers"]:
+		if is_unlocked(ekey):
+			enemy_bonus += 0.20
+	var earned := int(round(n * mult * enemy_bonus))
 	tokens += earned
+	run_tokens_gained += earned
 	stat_add("total_points_earned", earned)
 	add_run_score(earned)
 	save_state()
@@ -312,6 +366,8 @@ func best_score_for_seed(seed_val: int) -> int:
 ## Reset per-run counters. Call at level start.
 func reset_run_state() -> void:
 	current_run_score = 0
+	current_run_highest_combo = 0
+	run_tokens_gained = 0
 	current_seed_best_score = best_score_for_seed(current_run_seed)
 	var cs = get_node_or_null("/root/ComboSystem")
 	if cs and cs.has_method("reset"):
@@ -323,6 +379,7 @@ func reset_progress() -> void:
 	unlocked = {}
 	feature_overrides = {}
 	first_death_done = false
+	tutorial_seen = false
 	best_distance = 0
 	level_library = []
 	color_palette = "default"
@@ -379,6 +436,12 @@ func on_player_death(distance_tiles: int) -> int:
 	# Fast Mode pays a 50% bounty on top of the base reward.
 	if is_unlocked("fast_mode") and bool(settings_cfg.get("fast_mode", false)):
 		awarded = int(round(awarded * 1.5))
+	# Enemy-unlock bonus (mirrors add_tokens logic): each tier adds +20%.
+	var enemy_bonus: float = 1.0
+	for ekey in ["enemies_basic", "enemies_more", "enemies_advanced", "smashers"]:
+		if is_unlocked(ekey):
+			enemy_bonus += 0.20
+	awarded = int(round(awarded * enemy_bonus))
 	if distance_tiles > best_distance:
 		best_distance = distance_tiles
 	tokens += awarded

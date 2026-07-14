@@ -16,9 +16,9 @@ func _ready() -> void:
 
 	var collision_shape = $CollisionShape2D
 	if collision_shape and collision_shape.shape is RectangleShape2D:
-		collision_shape.shape.size = Vector2(spike_size.x * 0.6, spike_size.y * 0.6)
-		collision_shape.position.y = spike_size.y * 0.2
-
+		collision_shape.shape.size = Vector2(spike_size.x * 0.48, spike_size.y * 0.52)
+		collision_shape.position.y = spike_size.y * 0.1
+	position.x -= (spike_size.x * 0.5)
 	if Global.gfx("enemy_sprites"):
 		sprite = Sprite2D.new()
 		sprite.texture = preload("res://assets/spikes.png")
@@ -29,7 +29,7 @@ func _ready() -> void:
 		# Shift visual left by half a tile so the spike sits over the tile
 		# the level generator intended, not the tile to its right.
 		if sprite.scale.x != 0.0:
-			sprite.offset.x = -(spike_size.x * 0.5) / sprite.scale.x
+			pass#sprite.offset.x = -(spike_size.x * 0.5) / sprite.scale.x
 		add_child(sprite)
 
 	body_entered.connect(_on_body_entered)
@@ -54,15 +54,31 @@ func _draw() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
-	
 	if body is BaseEnemy:
-		# Bullets are excluded – they fly, don't walk into spikes meaningfully,
-		# and can pass through narrow gaps. Check via script name instead of class.
+		# Bullets are excluded – they fly, don't walk into spikes meaningfully.
 		if body.get_script() and body.get_script().resource_path.contains("bullet"):
 			return
+		if Global.gfx("enemy_sprites"):
+			_spawn_spike_blood()
 		body.die_torn(body.velocity)
 	elif body.has_method("die"):
+		_spawn_spike_blood()
 		body.die(false, "spikes", true)  # player – by_fall defaults false → tear death
+
+func _spawn_spike_blood() -> void:
+	if not Global.gfx("enemy_sprites"):
+		return
+	var tex: Texture2D = load("res://assets/spikes_blood.png")
+	if tex == null: return
+	var blood_sprite := Sprite2D.new()
+	blood_sprite.texture = tex
+	blood_sprite.scale = spike_size / tex.get_size()
+	# Offset to match spike visual alignment.
+	if blood_sprite.scale.x != 0.0:
+		pass#blood_sprite.offset.x = -(spike_size.x * 0.5) / blood_sprite.scale.x
+	blood_sprite.z_index = -11  # Just above the spike base (z=-12)
+	get_parent().add_child(blood_sprite)
+	blood_sprite.global_position = global_position
 
 func _on_area_entered(area: Area2D) -> void:
 	print("[Spike Debug] area_entered by: ", area.name, " script: ", area.get_script().resource_path if area.get_script() else "none")

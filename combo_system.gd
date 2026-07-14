@@ -39,9 +39,34 @@ var _live_popup: Label = null  # persistent big-xN popup while active
 var _popup_shown_for: int = 0  # highest multiplier the popup has been animated for
 var _record_celebrated: int = 0  # highest longest_combo we've already congratulated this session
 
+# ─── WIND EFFECT ─────────────────────────────────────────────────────────────
+const WIND_COMBO_THRESHOLD := 3
+var _wind_on: bool = false
+# Pool of wind-line Line2Ds reused each spawn cycle.
+var _wind_lines: Array[Line2D] = []
+var _wind_line_data: Array = []   # [{age, speed, y, length, alpha}]
+const WIND_LINE_COUNT := 14
+const WIND_LINE_SPEED_MIN := 900.0
+const WIND_LINE_SPEED_MAX := 1600.0
+
 func _ready() -> void:
 	layer = 80
 	set_process(true)
+	_setup_wind_lines()
+
+func _setup_wind_lines() -> void:
+	for i in WIND_LINE_COUNT:
+		var ln := Line2D.new()
+		ln.width = 3.0
+		ln.default_color = Color(1.0, 1.0, 1.0, 0.0)
+		ln.z_index = 50
+		ln.visible = false
+		add_child(ln)
+		_wind_lines.append(ln)
+		_wind_line_data.append({"age": INF, "speed": 1200.0, "y": 0.0, "length": 140.0, "x": -200.0})
+	# Stagger initial positions so they don't all spawn simultaneously.
+	for i in WIND_LINE_COUNT:
+		_wind_line_data[i]["age"] = randf() * 3.0
 
 func _gated() -> bool:
 	return Global.is_unlocked("combo_system")
@@ -90,6 +115,12 @@ func reset() -> void:
 	if _live_popup and is_instance_valid(_live_popup):
 		_live_popup.queue_free()
 	_live_popup = null
+	_set_wind(false)
+
+func _set_wind(active: bool) -> void:
+	if _wind_on == active: return
+	_wind_on = active
+	AudioManager.set_wind_audio(active)
 
 func _begin_combo() -> void:
 	_combo_active = true
@@ -112,6 +143,7 @@ func _end_combo() -> void:
 		var tw = create_tween()
 		tw.tween_property(pop, "modulate:a", 0.0, 0.25)
 		tw.tween_callback(pop.queue_free)
+	_set_wind(false)
 
 func _elapsed_secs() -> float:
 	return (Time.get_ticks_msec() - _combo_start_ms) / 1000.0
@@ -132,6 +164,7 @@ func _recompute_multiplier() -> void:
 		_multiplier = mult
 
 func _process(delta: float) -> void:
+	_tick_wind_lines(delta)
 	if not _combo_active: return
 	_recompute_multiplier()
 	if _multiplier >= 1:
@@ -144,9 +177,50 @@ func _process(delta: float) -> void:
 			_popup_shown_for = _multiplier
 			_impact_popup(_live_popup)
 			_spawn_praise_popup(_multiplier)
+	# Activate wind when combo exceeds threshold.
+	_set_wind(_multiplier > WIND_COMBO_THRESHOLD)
 	# End combo if grace period elapses without airborne / bonus refresh.
 	if not _airborne and _elapsed_secs() > 0.35 and _bonus == 0:
 		_end_combo()
+
+func _tick_wind_lines(delta: float) -> void:
+	if not Global.is_unlocked("wind_effect"): return
+	var vp_size := get_viewport().get_visible_rect().size if get_viewport() else Vector2(1280, 720)
+	for i in WIND_LINE_COUNT:
+		var d: Dictionary = _wind_line_data[i]
+		var ln: Line2D = _wind_lines[i]
+		if not _wind_on:
+			if d["age"] == INF:
+				ln.visible = false
+				continue
+		d["age"] = d.get("age", INF) + delta
+		# Each line lives for a travel time then is respawned.
+		var travel_time: float = (vp_size.x + d["length"]) / d["speed"]
+		if d["age"] > travel_time:
+			if not _wind_on:
+				ln.visible = false
+				d["age"] = INF
+				continue
+			# Spawn a fresh line at a random Y.
+			d["speed"] = randf_range(WIND_LINE_SPEED_MIN, WIND_LINE_SPEED_MAX)
+			d["length"] = randf_range(60.0, 240.0)
+			d["y"] = randf_range(vp_size.y * 0.05, vp_size.y * 0.95)
+			d["x"] = -d["length"]
+			d["age"] = 0.0
+		var x: float = d["x"] + d["speed"] * d["age"]
+		# Fade in from left edge, fade out to right edge.
+		var alpha: float = 1.0
+		var fade_dist: float = 120.0
+		if x < fade_dist:
+			alpha = clamp(x / fade_dist, 0.0, 1.0)
+		elif x > vp_size.x - fade_dist:
+			alpha = clamp((vp_size.x - x) / fade_dist, 0.0, 1.0)
+		var base_alpha: float = 0.55 if _multiplier >= 5 else 0.35
+		ln.clear_points()
+		ln.add_point(Vector2(x, d["y"]))
+		ln.add_point(Vector2(x + d["length"], d["y"]))
+		ln.default_color = Color(1.0, 1.0, 1.0, base_alpha * alpha)
+		ln.visible = alpha > 0.01
 
 ## Heat + rainbow + jitter drive the live popup's paint each frame so the
 ## number visibly gets more unhinged as the combo climbs.
@@ -289,6 +363,7 @@ func _spawn_praise_popup(mult: int) -> void:
 	_spawn_side_popup(p.global_position, word, font_size, col)
 
 func _track_longest_combo(value: int) -> void:
+	Global.current_run_highest_combo = max(Global.current_run_highest_combo, value)
 	var prior := int(Global.stats.get("longest_combo", 0))
 	Global.stat_max("longest_combo", value)
 	# Congratulate the first time we beat the prior record this session.

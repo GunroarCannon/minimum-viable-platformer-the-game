@@ -40,14 +40,14 @@ func _custom_process(delta: float) -> void:
 	if is_on_floor():
 		var ray_l = $RayCastLeft
 		var ray_r = $RayCastRight
-		
+
 		if is_on_wall():
 			direction *= -1
 		elif direction == -1 and ray_l and not ray_l.is_colliding():
 			direction = 1
 		elif direction == 1 and ray_r and not ray_r.is_colliding():
 			direction = -1
-			
+
 		velocity.x = direction * walk_speed
 
 	if anim:

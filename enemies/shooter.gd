@@ -49,6 +49,13 @@ func _shoot() -> void:
 	bullet.global_position = global_position + Vector2(direction * 70, -20)
 	get_parent().add_child(bullet)
 	Global.stat_add("bullets_fired", 1)
+	var _player_node = get_tree().get_first_node_in_group("player")
+	if _player_node:
+		var _dist := global_position.distance_to(_player_node.global_position)
+		const MAX_DIST := 1400.0
+		if _dist < MAX_DIST:
+			var _vol = lerp(-8.0, -28.0, _dist / MAX_DIST)
+			AudioManager.play("explosion", _vol, 0.06)
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not anim:

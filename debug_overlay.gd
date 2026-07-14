@@ -14,6 +14,12 @@ var _accum: float = 0.0
 func _ready() -> void:
 	layer = 200
 	_build_ui()
+	# Honour the inspector export: if Global.debug_text (the @export flag) is set,
+	# force the overlay on so the developer doesn't have to dig into a saved
+	# toggle every time. Players who deliberately turned it off will still have
+	# the F3 shortcut to re-enable it.
+	if Global.debug_text:
+		Global.debug_toggles["show_overlay"] = true
 	set_process(true)
 
 func _build_ui() -> void:

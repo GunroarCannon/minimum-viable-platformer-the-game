@@ -50,6 +50,7 @@ func _collect() -> void:
 	TokenPop.spawn(get_parent(), global_position, token_value)
 	# Sparks
 	var p = CPUParticles2D.new()
+	p.texture = Global.get_circle_texture()
 	p.emitting = true
 	p.one_shot = true
 	p.amount = 22
