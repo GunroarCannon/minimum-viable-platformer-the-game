@@ -35,6 +35,12 @@ var _bonus: int = 0            # accumulated stomp bonuses this combo
 var _multiplier: int = 0       # last computed integer multiplier
 var _last_tick_shown: int = 0
 
+# x-stall detection: end combo if player hasn't moved horizontally for this long.
+const X_STALL_SECS := 0.5
+const X_MOVE_EPS   := 2.0   # pixels; ignores floating-point jitter
+var _last_player_x: float = INF
+var _x_stall_timer: float = 0.0
+
 var _live_popup: Label = null  # persistent big-xN popup while active
 var _popup_shown_for: int = 0  # highest multiplier the popup has been animated for
 var _record_celebrated: int = 0  # highest longest_combo we've already congratulated this session
@@ -112,6 +118,8 @@ func reset() -> void:
 	_multiplier = 0
 	_last_tick_shown = 0
 	_combo_active = false
+	_last_player_x = INF
+	_x_stall_timer = 0.0
 	if _live_popup and is_instance_valid(_live_popup):
 		_live_popup.queue_free()
 	_live_popup = null
@@ -131,6 +139,8 @@ func _begin_combo() -> void:
 	_popup_shown_for = 0
 	_popup_base_pos = Vector2.ZERO
 	_popup_hue_t = 0.0
+	_last_player_x = INF
+	_x_stall_timer = 0.0
 
 func _end_combo() -> void:
 	_combo_active = false
@@ -182,6 +192,20 @@ func _process(delta: float) -> void:
 	# End combo if grace period elapses without airborne / bonus refresh.
 	if not _airborne and _elapsed_secs() > 0.35 and _bonus == 0:
 		_end_combo()
+		return
+	# End combo if player has been stationary on x for too long (e.g. stuck against wall).
+	var players := get_tree().get_nodes_in_group("player")
+	if not players.is_empty():
+		var px: float = (players[0] as Node2D).global_position.x
+		if _last_player_x == INF:
+			_last_player_x = px
+		elif abs(px - _last_player_x) > X_MOVE_EPS:
+			_last_player_x = px
+			_x_stall_timer = 0.0
+		else:
+			_x_stall_timer += delta
+			if _x_stall_timer >= X_STALL_SECS:
+				_end_combo()
 
 func _tick_wind_lines(delta: float) -> void:
 	if not Global.is_unlocked("wind_effect"): return

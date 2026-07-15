@@ -2,6 +2,8 @@ extends Node2D
 
 static var current_seed: int = 0
 
+var rng = RandomNumberGenerator.new()
+
 @export var level_width_blocks: int = 40
 @export var tile_scene: PackedScene = preload("res://tile_object.tscn")
 @export var tile_strip_scene: PackedScene = preload("res://tile_strip.tscn")
@@ -157,6 +159,107 @@ func _ready() -> void:
 		var tut = tscript.new()
 		add_child(tut)
 
+
+# ─── COIN PATTERNED PLACEMENT ───────────────────────────────────────────
+
+## Returns true if (tx, ty) in the block pattern is a valid coin cell:
+##   • The cell is empty (.)
+##   • Not inside a 3-tile-deep strip from a '#' 1–2 rows above
+##   • Has a '#' floor at least 2 rows below
+func _coin_valid(pattern: Array, block_w: int, block_h: int, tx: int, ty: int) -> bool:
+	if tx < 0 or tx >= block_w or ty < 0 or ty >= block_h: return false
+	if pattern[ty][tx] != '.': return false
+	for ty_above in range(max(0, ty - 2), ty):
+		if pattern[ty_above][tx] == '#': return false
+	for yy in range(ty + 1, block_h):
+		if pattern[yy][tx] == '#':
+			return (yy - ty) >= 2
+	return false
+
+## Place a coin at grid cell (tx, ty) within the current block.
+func _place_coin(tx: int, ty: int, next_x: int, y_offset: int) -> void:
+	var cp := coin_scene.instantiate()
+	cp.position = Vector2(
+		(next_x + tx) * tile_size.x + tile_size.x * 0.5,
+		(y_offset + ty) * tile_size.y + tile_size.y * 0.5
+	)
+	add_child(cp)
+
+## Coin pattern constants — tune these to adjust feel.
+const COIN_ARC_HEIGHT    := 2.5   # rows of clearance at the peak of an arc
+const COIN_LINE_CHANCE   := 0.55  # probability of picking arc vs diagonal vs cluster
+const COIN_SKIP_CHANCE   := 0.45  # per-block chance of no coins at all (raised to reduce clutter)
+
+## Place coins in one of several patterns (arc, diagonal, cluster, double-arc).
+## Chosen per-block using the seeded rng so the same seed always produces the same layout.
+func _spawn_coins_patterned(pattern: Array, block_w: int, block_h: int,
+		next_x: int, y_offset: int) -> void:
+	if rng.randf() < COIN_SKIP_CHANCE: return
+
+	# Build a per-column floor profile: lowest row with '#' above the abyss.
+	var floor_row: Array = []
+	for tx in block_w:
+		var fr := -1
+		for ty in range(block_h - 1, -1, -1):
+			if pattern[ty][tx] == '#':
+				fr = ty; break
+		floor_row.append(fr)
+
+	var roll := rng.randf()
+
+	if roll < 0.30:
+		# ── Arc: sine curve above the floor ──────────────────────────────────
+		for tx in block_w:
+			if floor_row[tx] < 0: continue
+			var arc_t = float(tx) / max(1, block_w - 1)
+			var arc_lift = int(round(sin(arc_t * PI) * COIN_ARC_HEIGHT))
+			var ty = floor_row[tx] - 2 - arc_lift
+			if _coin_valid(pattern, block_w, block_h, tx, ty):
+				_place_coin(tx, ty, next_x, y_offset)
+
+	elif roll < 0.55:
+		# ── Double arc: two offset sine waves, every-other column to thin out ─
+		for tx in range(0, block_w, 2):  # every-other column keeps density manageable
+			if floor_row[tx] < 0: continue
+			for wave in [0.0, PI]:
+				var arc_t = float(tx) / max(1, block_w - 1)
+				var arc_lift := int(round(sin(arc_t * PI + wave) * COIN_ARC_HEIGHT * 0.6))
+				var ty = floor_row[tx] - 2 - arc_lift
+				if _coin_valid(pattern, block_w, block_h, tx, ty):
+					_place_coin(tx, ty, next_x, y_offset)
+
+	elif roll < 0.72:
+		# ── Diagonal line: coins at a height that shifts left-to-right ───────
+		var start_lift := rng.randi_range(1, 3)
+		var end_lift   := rng.randi_range(1, 3)
+		for tx in block_w:
+			if floor_row[tx] < 0: continue
+			var t = float(tx) / max(1, block_w - 1)
+			var lift := int(round(lerp(float(start_lift), float(end_lift), t)))
+			var ty = floor_row[tx] - 2 - lift
+			if _coin_valid(pattern, block_w, block_h, tx, ty):
+				_place_coin(tx, ty, next_x, y_offset)
+
+	elif roll < 0.87:
+		# ── Clusters: 2–3 vertical stacks of 2–3 coins ───────────────────────
+		var n_clusters := rng.randi_range(1, 3)
+		for _c in n_clusters:
+			var tx := rng.randi_range(0, block_w - 1)
+			if floor_row[tx] < 0: continue
+			var height := rng.randi_range(2, 3)
+			for k in height:
+				var ty = floor_row[tx] - 2 - k
+				if _coin_valid(pattern, block_w, block_h, tx, ty):
+					_place_coin(tx, ty, next_x, y_offset)
+
+	else:
+		# ── Row: coins at a fixed height, every 3rd column for breathing room ─
+		var lift := rng.randi_range(2, 4)
+		for tx in range(0, block_w, 3):  # every-3rd column (was every-2nd)
+			if floor_row[tx] < 0: continue
+			var ty = floor_row[tx] - lift
+			if _coin_valid(pattern, block_w, block_h, tx, ty):
+				_place_coin(tx, ty, next_x, y_offset)
 
 # ─── ENTITY SPAWNING ────────────────────────────────────────────────────
 
@@ -428,27 +531,10 @@ func generate_level() -> void:
 				else:
 					rx += 1
 
-		# ── 1b) Coin sprinkle. Empty cells above any '#' in the column get a
-		#         small chance of holding a coin, only when the skill is owned.
+		# ── 1b) Patterned coin placement. Coins follow arcs, lines, or clusters
+		#         rather than being scattered at a flat random rate.
 		if Global.is_unlocked("coins") and i > 0:
-			for ty in range(block_h):
-				var grid_y_c := y_offset + ty
-				var row_c: String = pattern[ty]
-				for tx in range(block_w):
-					if row_c[tx] != '.': continue
-					# Need solid ground at least 2 rows below (coin must float above floor).
-					var floor_dist := -1
-					for yy in range(ty + 1, block_h):
-						if pattern[yy][tx] == '#':
-							floor_dist = yy - ty; break
-					if floor_dist < 2: continue
-					if rng.randf() > 0.06: continue
-					var cp = coin_scene.instantiate()
-					cp.position = Vector2(
-						(next_x + tx) * tile_size.x + tile_size.x * 0.5,
-						grid_y_c * tile_size.y + tile_size.y * 0.5
-					)
-					add_child(cp)
+			_spawn_coins_patterned(pattern, block_w, block_h, next_x, y_offset)
 
 		# ── 2) Spawn non-tile entities (ramps + enemies)
 		for ty in range(block_h):

@@ -20,6 +20,12 @@ var _use_footstep_dust: bool = false
 var _use_impact_freeze: bool = false
 var _use_hit_flash:     bool = false
 var _use_near_miss:     bool = false
+var _use_parry:         bool = false
+var _use_coin_magnet:   bool = false
+var _use_ghost_mode:    bool = false
+var _use_cursed_camera: bool = false
+var _use_backflip:      bool = false
+var _use_rainbow_trail: bool = false
 
 # ─── AUDIO ─────────────────────────────────────────────────────────────────
 
@@ -51,6 +57,12 @@ func _resolve_flags() -> void:
 	_use_impact_freeze = Global.is_unlocked("impact_freeze")
 	_use_hit_flash     = Global.is_unlocked("hit_flash")
 	_use_near_miss     = Global.is_unlocked("near_miss_slowmo")
+	_use_parry         = Global.is_unlocked("parry_mechanic")
+	_use_coin_magnet   = Global.is_unlocked("coin_magnet")
+	_use_ghost_mode    = Global.is_unlocked("ghost_mode")
+	_use_cursed_camera = Global.is_unlocked("cursed_camera")
+	_use_backflip      = Global.is_unlocked("backflip_jumps") and _use_sprite_player
+	_use_rainbow_trail = Global.is_unlocked("rainbow_trail") and _use_motion_trail
 
 func _ready() -> void:
 	super._ready()
@@ -311,6 +323,25 @@ func _tick_motion_trail() -> void:
 	_trail.clear_points()
 	for p in _trail_points:
 		_trail.add_point(p)
+	if _use_rainbow_trail:
+		var hue := fmod(Time.get_ticks_msec() / 1000.0 * 0.6, 1.0)
+		_trail.default_color = Color.from_hsv(hue, 0.75, 1.0, 0.5)
+
+# ─── BACKFLIP JUMPS (unlock: backflip_jumps) ────────────────────────────────
+var _backflip_tween: Tween = null
+
+## Spin the player sprite a full turn on jump. Cosmetic only — never rotates the
+## controller body, so raycasts/collision stay upright.
+func _do_backflip() -> void:
+	if not (_use_sprite_player and anim): return
+	if _backflip_tween and _backflip_tween.is_valid():
+		_backflip_tween.kill()
+	anim.rotation_degrees = 0.0
+	var spin := -360.0 if velocity.x >= 0.0 else 360.0
+	_backflip_tween = create_tween()
+	_backflip_tween.tween_property(anim, "rotation_degrees", spin, 0.45) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_backflip_tween.tween_callback(func(): if is_instance_valid(anim): anim.rotation_degrees = 0.0)
 
 # ─── FOOTSTEP DUST ─────────────────────────────────────────────────────────
 var _foot_dust: CPUParticles2D = null
@@ -484,6 +515,8 @@ func _process(delta: float) -> void:
 			Global.stat_add("jumps", 1)
 			_takeoff_y = global_position.y
 			_peak_y = global_position.y
+			if _use_backflip:
+				_do_backflip()
 		elif on_floor and _takeoff_y != 0.0:
 			var jump_h := int(_takeoff_y - _peak_y)
 			if jump_h > 0:
@@ -508,6 +541,10 @@ func _process(delta: float) -> void:
 	_tick_footstep_dust()
 	if _use_near_miss:
 		_tick_near_miss(delta)
+	if _use_coin_magnet:
+		_tick_coin_magnet(delta)
+	if _use_parry:
+		_tick_parry(delta)
 	if _use_double_jump:
 		_tick_double_jump_pulse(delta)
 
@@ -659,7 +696,14 @@ func _get_camera() -> Camera2D:
 
 func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = false) -> void:
 	if is_dead: return
+	
+	# Ghost Mode: intercept death entirely. Gives 3 seconds of translucent invincibility.
+	if _use_ghost_mode and not is_fall and not _ghost_active:
+		_enter_ghost_mode(cause)
+		return
+
 	is_dead = true
+	Engine.time_scale = 1.0 # Ensure time is restored if killed during a time-slow (like parry)
 	if cause == "" and is_fall:
 		cause = "the fall"
 	Global.last_death_cause = cause
@@ -691,6 +735,13 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 		get_parent().add_child(cam)
 		cam.global_position = old_global
 		cam.make_current()
+		
+		# Cursed camera: tilt the view sideways on every hit (after detaching so tween survives).
+		if _use_cursed_camera:
+			var tilt_deg := 22.0 * (1.0 if randf() < 0.5 else -1.0)
+			var tw := create_tween()
+			tw.tween_property(cam, "rotation_degrees", tilt_deg, 0.06).set_trans(Tween.TRANS_BACK)
+			tw.tween_property(cam, "rotation_degrees", 0.0, 0.34).set_trans(Tween.TRANS_ELASTIC)
 	_shake_timer = 0.0
 
 	# Splatter — parented to the level so it survives a tear-effect that hides us.
@@ -808,6 +859,253 @@ func _find_blast_source() -> Vector2:
 			best_d = d
 			best = (h as Node2D).global_position
 	return best
+
+
+# ─── COIN MAGNET ───────────────────────────────────────────────────────────
+const MAGNET_RADIUS  := 220.0
+const MAGNET_STRENGTH := 480.0  # px/s pull toward player at edge of radius
+
+func _tick_coin_magnet(_delta: float) -> void:
+	var coins := get_tree().get_nodes_in_group("coins")
+	for c in coins:
+		if not c is Node2D: continue
+		if not is_instance_valid(c): continue
+		var coin = c as Node2D
+		if coin.get("_collected") == true: continue
+		if coin.get("flying") == true: continue
+		var diff: Vector2 = global_position - coin.global_position
+		var dist: float = diff.length()
+		if dist <= 0.0 or dist > MAGNET_RADIUS: continue
+		# Pull strength increases as coin gets closer (inverse-linear).
+		var t: float = 1.0 - (dist / MAGNET_RADIUS)
+		coin.global_position += diff.normalized() * MAGNET_STRENGTH * t * _delta
+
+
+# ─── PARRY MECHANIC ────────────────────────────────────────────────────────
+## When the player takes an enemy hit, a brief window opens to press Jump and
+## perform a parry: the hit is absorbed, the enemy bounces away, and a mid-air
+## jump is restored. Gated on \"parry_mechanic\" skill.
+
+const PARRY_WINDOW    := 0.15   # seconds the parry input is accepted
+const PARRY_ENEMY_VEL := 800.0  # px/s the parried enemy flies back
+const PARRY_BOOST_VEL := 860.0  # px/s the player is launched up on a non-stomp parry
+const PARRY_IGNORE_TIME := 1.1  # seconds the parried enemy is phased-out (no collision)
+const PARRY_FREEZE    := 0.24   # hitstop hold duration (real seconds) — deliberately long
+const PARRY_ZOOM_FACTOR := 1.6  # how hard the camera punches in on a parry
+const PARRY_ZOOM_IN   := 0.10   # zoom-in tween duration (real seconds)
+const PARRY_ZOOM_OUT  := 0.40   # zoom-out tween back to the previous zoom
+
+var _parry_window_timer: float = 0.0  # > 0 while window is open
+var _parry_attacker: Node = null      # enemy that opened the parry window
+var _parry_consumed: bool = false
+
+## Called from _on_hitbox_ area_entered path in base_enemy.gd via signal or
+## direct call when the player body sensor overlaps a hitbox. We intercept
+## the hit here BEFORE die() is called.
+func _spawn_floating_text(text: String, color: Color, is_huge: bool = false) -> void:
+	if not is_inside_tree(): return
+	var lbl = Label.new()
+	lbl.text = text
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_color_override("font_outline_color", Color(0.1, 0.1, 0.1, 1.0))
+	lbl.add_theme_constant_override("outline_size", 14 if is_huge else 6)
+	lbl.add_theme_font_size_override("font_size", 72 if is_huge else 20)
+	lbl.z_index = 100
+	get_parent().add_child(lbl)
+	
+	if is_huge:
+		# Center it properly and give it a huge pop-in
+		lbl.global_position = global_position + Vector2(-110, -96)
+		lbl.scale = Vector2(0.1, 0.1)
+		lbl.rotation_degrees = -10.0
+		var tw = lbl.create_tween()
+		tw.tween_property(lbl, "scale", Vector2(1.6, 1.6), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(lbl, "rotation_degrees", 5.0, 0.15)
+		tw.tween_property(lbl, "scale", Vector2(1.25, 1.25), 0.1)
+		tw.parallel().tween_property(lbl, "rotation_degrees", 0.0, 0.1)
+		tw.tween_property(lbl, "global_position:y", lbl.global_position.y - 80.0, 0.8).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.8).set_delay(0.2)
+		tw.tween_callback(lbl.queue_free)
+	else:
+		lbl.global_position = global_position + Vector2(-20, -40)
+		var tw = lbl.create_tween()
+		tw.tween_property(lbl, "global_position:y", lbl.global_position.y - 60.0, 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(lbl, "modulate:a", 0.0, 0.6).set_delay(0.2)
+		tw.tween_callback(lbl.queue_free)
+
+func try_open_parry_window(attacker: Node) -> bool:
+	if not _use_parry: return false
+	if is_dead: return false
+	if _parry_window_timer > 0.0: return false  # already parrying something
+	_parry_window_timer = PARRY_WINDOW
+	_parry_attacker = attacker
+	_parry_consumed = false
+	
+	# Slow time drastically to give the player a clear window to react.
+	Engine.time_scale = 0.15
+	_spawn_floating_text("!", Color(1.0, 0.9, 0.1))
+	AudioManager.play("jump", 0.6, 0.3) # Low-pitch focus sound
+
+	# Flash golden to signal the window.
+	var target: CanvasItem = anim if (anim and _use_sprite_player) else self
+	var tw := create_tween()
+	tw.tween_property(target, "modulate", Color(2.2, 1.8, 0.3, 1.0), 0.05)
+	tw.tween_property(target, "modulate", Color.WHITE, 0.12)
+	return true  # caller should skip the die() call while window is open
+
+func _tick_parry(delta: float) -> void:
+	if _parry_window_timer <= 0.0: return
+	
+	# delta is scaled by Engine.time_scale! We want the window to be real-time seconds.
+	var unscaled_delta = delta / Engine.time_scale if Engine.time_scale > 0.0 else delta
+	_parry_window_timer -= unscaled_delta
+	
+	if Input.is_action_just_pressed("jump") and not _parry_consumed:
+		_execute_parry()
+	if _parry_window_timer <= 0.0 and not _parry_consumed:
+		# Window expired without a parry — the hit lands normally.
+		Engine.time_scale = 1.0
+		_spawn_floating_text("LATE!", Color(1.0, 0.3, 0.2))
+		_parry_attacker = null
+		if not is_dead:
+			die(false, "an enemy")
+
+func _execute_parry() -> void:
+	if _parry_consumed: return
+	_parry_consumed = true
+	_parry_window_timer = 0.0
+
+	_spawn_floating_text("PARRY!", Color(0.1, 1.0, 0.5), true)
+
+	# Special layered audio
+	AudioManager.play("gem_gather", 0.0, 1.2)
+	AudioManager.play("smallsword", 0.0, 0.7)
+	AudioManager.play("smallsword", 2.0, 0.0)
+
+	# Restore a jump so the player keeps momentum after the parry.
+	if jumpCount <= 0:
+		jumpCount = 1
+	elif jumps > 1:
+		jumpCount = 1
+
+	# Combo spike + juice.
+	ComboSystem.notify_stomp(global_position, 3)
+	ScreenFX.kick_chromatic(0.024, 0.4)
+
+	# Was this a stomp-style parry (descending onto the enemy) or a side hit?
+	# Only a stomp destroys the creature; a side parry deflects it and launches
+	# the player upward instead.
+	var was_stomp := false
+	if is_instance_valid(_parry_attacker):
+		was_stomp = velocity.y > 50.0 \
+			and global_position.y <= _parry_attacker.global_position.y + 12.0
+
+	if was_stomp and is_instance_valid(_parry_attacker) and _parry_attacker.has_method("stomp_by"):
+		_parry_attacker.stomp_by(self)
+	else:
+		# Non-stomp parry: boost the player up and phase through the creature so
+		# the deflected hit can't immediately re-connect.
+		velocity.y = -PARRY_BOOST_VEL
+		_deflect_and_phase(_parry_attacker, PARRY_IGNORE_TIME)
+	_parry_attacker = null
+
+	# Cinematic camera: punch in, hold a frozen frame, then ease back out.
+	_parry_camera_sequence()
+
+	# Big golden flash on the player.
+	var target: CanvasItem = anim if (anim and _use_sprite_player) else self
+	var tw := create_tween()
+	tw.tween_property(target, "modulate", Color(2.5, 2.2, 0.4, 1.0), 0.06)
+	tw.tween_property(target, "scale", anim.scale * 1.3 if anim else scale * 1.3, 0.06)
+	tw.tween_property(target, "modulate", Color.WHITE, 0.18)
+	tw.parallel().tween_property(target, "scale", anim.scale if anim else scale, 0.18)
+
+## Temporarily disables a parried enemy's hitbox so the deflected hit can't
+## re-connect, shoves the creature away, and restores it after `secs` real seconds.
+func _deflect_and_phase(enemy: Node, secs: float) -> void:
+	if not is_instance_valid(enemy): return
+	# Shove the creature back and up.
+	var ev = enemy.get("velocity")
+	if ev is Vector2:
+		var dir := signf(enemy.global_position.x - global_position.x)
+		if dir == 0.0: dir = 1.0
+		enemy.set("velocity", Vector2(dir * PARRY_ENEMY_VEL, -320.0))
+	var hb = enemy.get_node_or_null("Hitbox")
+	if hb:
+		hb.set_deferred("monitoring", false)
+		hb.set_deferred("monitorable", false)
+	if enemy is CanvasItem:
+		enemy.modulate.a = 0.45
+	var t := get_tree().create_timer(secs, true, false, true)
+	t.timeout.connect(func():
+		if not is_instance_valid(enemy): return
+		var h = enemy.get_node_or_null("Hitbox")
+		if h:
+			h.set_deferred("monitoring", true)
+			h.set_deferred("monitorable", true)
+		if enemy is CanvasItem:
+			enemy.modulate.a = 1.0
+	)
+
+## Cinematic parry camera: tween the zoom in, hold a frozen frame (hitstop),
+## then tween back out to whatever zoom the camera had before.
+func _parry_camera_sequence() -> void:
+	var cam := _get_camera()
+	if cam == null:
+		# No camera — still deliver the hitstop.
+		Engine.time_scale = 0.0
+		await get_tree().create_timer(PARRY_FREEZE, true, false, true).timeout
+		if not is_dead:
+			Engine.time_scale = 1.0
+		return
+
+	var prev_zoom: Vector2 = cam.zoom
+	# Phase A — punch in (real time).
+	Engine.time_scale = 1.0
+	var tin := create_tween().set_process_mode(Tween.TWEEN_PROCESS_IDLE)
+	tin.tween_property(cam, "zoom", prev_zoom * PARRY_ZOOM_FACTOR, PARRY_ZOOM_IN) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await tin.finished
+
+	# Phase B — freeze the frame (longer hitstop).
+	Engine.time_scale = 0.0
+	await get_tree().create_timer(PARRY_FREEZE, true, false, true).timeout
+	if is_dead:
+		Engine.time_scale = 1.0
+		return
+
+	# Phase C — ease back out to the previous zoom.
+	Engine.time_scale = 1.0
+	if is_instance_valid(cam):
+		var tout := create_tween().set_process_mode(Tween.TWEEN_PROCESS_IDLE)
+		tout.tween_property(cam, "zoom", prev_zoom, PARRY_ZOOM_OUT) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+# ─── GHOST MODE ────────────────────────────────────────────────────────────
+## After dying, ghost mode lets the player run as an invincible translucent
+## ghost for 3 extra seconds before the game-over screen appears.
+var _ghost_active: bool = false
+
+func _enter_ghost_mode(cause: String) -> void:
+	if not _use_ghost_mode: return
+	_ghost_active = true
+	# Translucent blue tint.
+	var target: CanvasItem = anim if (anim and _use_sprite_player) else self
+	target.modulate = Color(0.6, 0.8, 1.0, 0.55)
+	# Disable all hazard sensors so nothing can kill us during ghost time.
+	if _body_sensor: _body_sensor.set_deferred("monitoring", false)
+	if _foot_sensor: _foot_sensor.set_deferred("monitoring", false)
+	# Floating ghost bob tween loop for 3 s.
+	if target == anim:
+		var tw := create_tween().set_loops(6)
+		tw.tween_property(target, "position:y", target.position.y - 8.0, 0.25).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(target, "position:y", target.position.y, 0.25).set_trans(Tween.TRANS_SINE)
+	await get_tree().create_timer(3.0).timeout
+	_ghost_active = false
+	target.modulate = Color.WHITE
+	die(false, cause, false)
+
 
 func get_local_lowest_y() -> float:
 	var player_x = global_position.x

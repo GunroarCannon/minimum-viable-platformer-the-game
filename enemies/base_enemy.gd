@@ -20,6 +20,23 @@ var tears_on_death: bool = true
 var player: Node2D = null
 var _is_dying: bool = false
 
+## Coins this enemy has eaten during the run (see coin.gd _enemy_eat).
+var coins_eaten: int = 0
+
+# ── Enemy drop configuration (easy to tune) ────────────────────────────
+## Minimum forward distance (px) coins fly from the death spot.
+const DROP_FORWARD_MIN := 120.0
+## Maximum forward distance (px).
+const DROP_FORWARD_MAX := 340.0
+## Minimum upward offset (px, negative = up).
+const DROP_UP_MIN      := -180.0
+## Maximum upward offset (px, negative = up).
+const DROP_UP_MAX      := -440.0
+## Extra random horizontal spread (px) per coin so they fan out.
+const DROP_SPREAD_X    := 70.0
+## Tween duration (seconds) for the arc flight.
+const DROP_TWEEN_SECS  := 0.30
+
 func _ready() -> void:
 	collision_layer = 2  # Enemies on Layer 2
 	# Mask 3 = Layer 1 (floor) + Layer 2 (other enemies) — enemies collide with each other
@@ -72,7 +89,11 @@ func _on_hitbox_area_entered(area: Area2D) -> void:
 		# Player centre more than 30 px above our centre → overhead / head contact → no kill
 		if body.global_position.y < global_position.y - 30:
 			return
+		# Parry mechanic: give the player a chance to parry this hit.
+		if body.has_method("try_open_parry_window") and body.try_open_parry_window(self):
+			return  # parry window opened — skip the kill; timer resolves it
 		body.die(false, _display_name())
+
 
 ## Human-readable name used for "Killed by …" messages. Subclasses can override.
 func _display_name() -> String:
@@ -116,10 +137,69 @@ func die(torn: bool = false, impact_vel = Vector2.ZERO, instant_shatter: bool = 
 		poof.scale_amount_min = 8.0
 		poof.scale_amount_max = 20.0
 		poof.color = Color(0.9, 0.9, 0.9)
+		# Party Mode unlock: death bursts into multicoloured confetti.
+		if Global.is_unlocked("party_death"):
+			poof.amount = 44
+			poof.initial_velocity_max = 360.0
+			var grad := Gradient.new()
+			grad.set_color(0, Color.from_hsv(randf(), 0.85, 1.0))
+			grad.set_color(1, Color.from_hsv(randf(), 0.85, 1.0))
+			grad.add_point(0.5, Color.from_hsv(randf(), 0.85, 1.0))
+			poof.color_ramp = grad
+			poof.color = Color.WHITE
 		get_parent().add_child(poof)
 		poof.global_position = global_position
 
+	if Global.is_unlocked("enemy_drops") and not is_bullet:
+		_spawn_coin_drops()
+	elif Global.is_unlocked("midas_touch") and not is_bullet:
+		# Midas Touch: even without Enemy Drops, every kill coughs up gold.
+		_spawn_coin_drops(true)
+
 	queue_free()
+
+## Weighted random: drop 0–5 extra coins + any coins previously eaten.
+## Weights: [0]=55 [1]=25 [2]=12 [3]=5 [4]=2 [5]=1  — zero is heavily favoured to avoid screen clutter.
+func _spawn_coin_drops(guaranteed: bool = false) -> void:
+	const WEIGHTS := [55, 25, 12, 5, 2, 1]
+	var roll := randi() % 100
+	var extra := 0
+	var acc := 0
+	for w in WEIGHTS:
+		acc += w
+		if roll < acc: break
+		extra += 1
+
+	# Midas Touch guarantees a healthy pile regardless of the weighted roll.
+	if guaranteed or Global.is_unlocked("midas_touch"):
+		extra = max(extra, 3)
+
+	var total := coins_eaten + extra
+	coins_eaten = 0
+	if total <= 0: return
+
+	var parent := get_parent()
+	if parent == null: return
+	var coin_res := load("res://coin.tscn")
+	if coin_res == null: return
+
+	for k in total:
+		var c = coin_res.instantiate()
+		parent.add_child(c)
+		c.global_position = global_position
+		c.flying = true
+		# Target: forward and upward, randomised per coin.
+		var tx := global_position.x + randf_range(DROP_FORWARD_MIN, DROP_FORWARD_MAX) \
+				  + randf_range(-DROP_SPREAD_X, DROP_SPREAD_X)
+		var ty := global_position.y + randf_range(DROP_UP_MIN, DROP_UP_MAX)
+		# Brief delay per coin so they fan out in time.
+		var delay := k * 0.04
+		var tw = c.create_tween()
+		tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if delay > 0.0:
+			tw.tween_interval(delay)
+		tw.tween_property(c, "global_position", Vector2(tx, ty), DROP_TWEEN_SECS)
+		tw.tween_callback(func(): if is_instance_valid(c): c.flying = false)
 
 ## Convenience shorthand – call this when an impact velocity is known.
 func die_torn(impact_vel: Vector2 = Vector2.ZERO) -> void:

@@ -17,6 +17,7 @@ var _bg_offset: float = 0.0
 
 
 func _ready() -> void:
+	layer = 95
 	play_btn.pressed.connect(_on_play)
 	shop_btn.pressed.connect(_on_shop)
 	settings_btn.pressed.connect(_on_settings)
@@ -42,9 +43,7 @@ func _ready() -> void:
 		buttons.add_child(_library_btn)
 		buttons.move_child(_library_btn, 2)
 
-	# Stats — inserted before Settings. When unlocked, Settings + Exit also
-	# migrate to the top bar as compact icon buttons so the main VBox stays
-	# short enough to fit at 720p.
+	# Stats — inserted before Settings when unlocked.
 	if Global.is_unlocked("stats_menu"):
 		_stats_btn = Button.new()
 		_stats_btn.text = "Stats"
@@ -52,7 +51,6 @@ func _ready() -> void:
 		_stats_btn.pressed.connect(_on_stats)
 		buttons.add_child(_stats_btn)
 		buttons.move_child(_stats_btn, buttons.get_child_count() - 3)
-		_promote_to_topbar()
 
 	# Leaderboard — inserted right after Stats (or before Settings if no Stats).
 	if Global.is_unlocked("leaderboard"):
@@ -69,6 +67,20 @@ func _ready() -> void:
 		else:
 			# After Shop (index 1), before Settings
 			buttons.move_child(_leaderboard_btn, 2)
+
+	# Always promote Settings + Exit to the top bar as compact icon buttons.
+	# This keeps the main VBox short enough to fit at 720p regardless of how
+	# many feature buttons have been unlocked.
+	_promote_to_topbar()
+
+	# If 5 or more buttons remain in the VBox, shrink them so they all fit.
+	var visible_btns := buttons.get_child_count()
+	if visible_btns >= 5:
+		for b in buttons.get_children():
+			if b is Button and b.visible:
+				b.custom_minimum_size = Vector2(380, 56)
+				b.add_theme_font_size_override("font_size", 24)
+		buttons.add_theme_constant_override("separation", 10)
 
 	_refresh_labels()
 	UITheme.apply_current(self)
@@ -159,12 +171,22 @@ func _apply_home_polish() -> void:
 	tw.tween_property(title_label, "position:y", title_label.position.y + 6.0, 1.4).set_trans(Tween.TRANS_SINE)
 	tw.tween_property(title_label, "position:y", title_label.position.y, 1.4).set_trans(Tween.TRANS_SINE)
 
-	# Beefier buttons — bigger, more space.
-	for b in $Root/Buttons.get_children():
-		if b is Button:
-			b.custom_minimum_size = Vector2(420, 72)
-			b.add_theme_font_size_override("font_size", 30)
-	$Root/Buttons.add_theme_constant_override("separation", 18)
+	# Beefier buttons — bigger, more space, but only if we have room.
+	# With 5+ buttons we already compacted them in _ready; don't re-expand.
+	var btn_count := $Root/Buttons.get_child_count()
+	if btn_count < 5:
+		for b in $Root/Buttons.get_children():
+			if b is Button:
+				b.custom_minimum_size = Vector2(420, 72)
+				b.add_theme_font_size_override("font_size", 30)
+		$Root/Buttons.add_theme_constant_override("separation", 18)
+	else:
+		for b in $Root/Buttons.get_children():
+			if b is Button and b.visible:
+				b.custom_minimum_size = Vector2(390, 56)
+				b.add_theme_font_size_override("font_size", 24)
+		$Root/Buttons.add_theme_constant_override("separation", 8)
+
 
 func _play_title_intro_tween() -> void:
 	title_label.modulate.a = 0.0

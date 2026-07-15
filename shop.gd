@@ -28,6 +28,7 @@ var _recommend_idx: int = -1
 var _recommend_state_sig: String = ""
 
 func _ready() -> void:
+	layer = 95
 	back_btn.pressed.connect(_on_back)
 	d_buy.pressed.connect(_on_buy)
 	tree_view.skill_selected.connect(_on_skill_selected)

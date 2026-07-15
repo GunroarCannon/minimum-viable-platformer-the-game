@@ -16,7 +16,7 @@ var _best_flag_intro_played: bool = false
 var _run_tokens_label: Label = null   # "+N ★" live run gain
 
 func _ready() -> void:
-	layer = 30
+	layer = 95
 	_shown = Global.is_unlocked("hud")
 	visible = _shown
 	if not _shown: return

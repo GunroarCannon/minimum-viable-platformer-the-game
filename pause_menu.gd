@@ -9,7 +9,7 @@ extends CanvasLayer
 @onready var btn_exit: Button = $Root/Center/Panel/V/Exit
 
 func _ready() -> void:
-	layer = 60
+	layer = 95
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	btn_resume.pressed.connect(_resume)

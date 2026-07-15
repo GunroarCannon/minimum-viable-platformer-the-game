@@ -7,7 +7,7 @@ uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linea
 uniform float intensity : hint_range(0.0, 2.0) = 0.65;
 uniform float threshold : hint_range(0.0, 1.0) = 0.55;
 uniform float radius    : hint_range(0.0, 8.0)  = 3.0;
-uniform vec2  pixel_size = vec2(1.0 / 1280.0, 1.0 / 720.0);
+uniform vec2  pixel_size = vec2(0.00078125, 0.001388889);
 
 float glow_contrib(vec3 s) {
 	float lum = dot(s, vec3(0.299, 0.587, 0.114));

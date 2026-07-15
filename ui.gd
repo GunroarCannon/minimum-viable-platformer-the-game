@@ -68,6 +68,7 @@ var _btn_row_secondary: HBoxContainer = null # Menu / Exit
 var _toast: Label = null
 
 func _ready() -> void:
+	layer = 95
 	visible = false
 	btn_buy_ui.pressed.connect(_on_buy_ui)
 	btn_retry.pressed.connect(_on_retry)

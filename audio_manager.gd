@@ -84,6 +84,7 @@ func _build_sfx_table() -> void:
 		"ui_buy":     load("res://assets/sounds/ui/buy_glass_004.ogg"),
 		"switch_on":  load("res://assets/sounds/ui/switch_on.ogg"),
 		"switch_off": load("res://assets/sounds/ui/switch_off.ogg"),
+		"gem_gather": load("res://assets/sounds/gem-gather-stereo-reverb.wav"),
 	}
 
 func _build_music_table() -> void:

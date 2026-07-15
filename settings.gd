@@ -12,6 +12,7 @@ extends CanvasLayer
 @onready var reset_btn: Button = $Root/Panel/Scroll/V/ResetButton
 
 func _ready() -> void:
+	layer = 95
 	back_btn.pressed.connect(_on_back)
 
 	master_slider.value = Global.settings_cfg.get("master_volume", 0.8)

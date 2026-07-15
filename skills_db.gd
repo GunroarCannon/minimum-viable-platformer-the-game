@@ -556,6 +556,13 @@ var SKILLS: Dictionary = {
 		"icon": "SM",
 		"priority": 48, "cost_override": 2,
 	},
+	"enemy_drops": {
+		"id": "enemy_drops", "name": "Enemy Drops",
+		"desc": "Defeated enemies drop 0–5 coins that fly forward and upward — yours to collect!\nEnemies that ate coins on the level drop those back out too.",
+		"cost": 3, "requires": ["coins", "enemies_basic"], "branch": "enemies",
+		"icon": "ED",
+		"priority": 45,
+	},
 
 	# ═══════════════════════════════════════════════════════════════════
 	# LEVEL BRANCH  (far NE)
@@ -729,7 +736,68 @@ var SKILLS: Dictionary = {
 		"icon": "NG",
 		"priority": 20, "cost_override": 4,
 	},
+
+	# ═══════════════════════════════════════════════════════════════════
+	# MEMEY UPGRADES  (the good stuff)
+	# ═══════════════════════════════════════════════════════════════════
+	"parry_mechanic": {
+		"id": "parry_mechanic", "name": "Parry!",
+		"desc": "Press Jump within 0.15 s of an enemy hit to PARRY it.\nThe enemy bounces back, you get your jump back, and the combo multiplier spikes.\nVery intentional game design decision.",
+		"cost": 4, "requires": ["wall_jump"], "branch": "moves",
+		"icon": "PA",
+		"priority": 56,
+	},
+	"coin_magnet": {
+		"id": "coin_magnet", "name": "Coin Magnet",
+		"desc": "Coins within 200 px are gently pulled toward the player.\nNo more watching coins drift past you into the void.",
+		"cost": 3, "requires": ["coins"], "branch": "level",
+		"icon": "CM",
+		"priority": 72,
+	},
+	"ghost_mode": {
+		"id": "ghost_mode", "name": "Ghost Mode",
+		"desc": "After dying, you play for 3 extra seconds as a translucent ghost — invincible, untouchable, and unable to collect coins.\nThe crowd goes wild.",
+		"cost": 5, "requires": ["double_jump"], "branch": "moves",
+		"icon": "GH",
+		"priority": 54,
+	},
+	"cursed_camera": {
+		"id": "cursed_camera", "name": "Cursed Camera",
+		"desc": "Taking a hit violently tilts the camera sideways for 0.4 s.\nDisorientating? Yes. Features? Also yes.",
+		"cost": 3, "requires": ["camera_shake"], "branch": "camera",
+		"icon": "CC",
+		"priority": 44,
+	},
+	"backflip_jumps": {
+		"id": "backflip_jumps", "name": "Backflips",
+		"desc": "Every jump is now a full 360° backflip.\nPurely cosmetic. Purely necessary.",
+		"cost": 3, "requires": ["double_jump"], "branch": "moves",
+		"icon": "BF",
+		"priority": 46,
+	},
+	"rainbow_trail": {
+		"id": "rainbow_trail", "name": "Rainbow Trail",
+		"desc": "Your motion trail cycles through the full rainbow as you run.\nTaste it.",
+		"cost": 2, "requires": ["motion_trail"], "branch": "juice",
+		"icon": "RB",
+		"priority": 40,
+	},
+	"midas_touch": {
+		"id": "midas_touch", "name": "Midas Touch",
+		"desc": "Every defeated enemy coughs up a guaranteed pile of gold.\nGreed is good.",
+		"cost": 4, "requires": ["enemy_drops"], "branch": "enemies",
+		"icon": "MI",
+		"priority": 43,
+	},
+	"party_death": {
+		"id": "party_death", "name": "Party Mode",
+		"desc": "Enemies explode into multicoloured confetti instead of a boring grey poof.\nEvery death is a celebration.",
+		"cost": 2, "requires": ["blood_splats"], "branch": "juice",
+		"icon": "PT",
+		"priority": 41,
+	},
 }
+
 
 const BRANCH_COLORS := {
 	"ui":       Color(0.55, 0.78, 0.95),
@@ -812,13 +880,13 @@ func purchase(skill_id: String) -> bool:
 ## Post-purchase side effects that shouldn't live in Global.grant (which is
 ## used for admin/debug flows too). Add per-skill hooks here.
 func _on_purchase_hook(skill_id: String) -> void:
-	match skill_id:
-		"font_select":
-			var fonts := list_font_files()
-			if fonts.size() > 0:
-				var pick: String = fonts[randi() % fonts.size()].get_file()
-				Global.settings_cfg["font_choice"] = pick
-				Global.save_state()
+	if skill_id == "font_select":
+		var fonts := list_font_files()
+		if fonts.size() > 0:
+			fonts.erase("funkymuskrat.ttf")
+			var pick: String = fonts[randi() % fonts.size()].get_file()
+			Global.settings_cfg["font_choice"] = pick
+			Global.save_state()
 
 ## Shared font-file enumeration used by both purchase-hook and Settings.
 static func list_font_files() -> Array:
