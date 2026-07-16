@@ -290,40 +290,57 @@ func _display_hof_results(hof: Dictionary, success: bool, error: String) -> void
 	if not success:
 		_display_error(error)
 		return
-		
+
 	if hof.is_empty() or (not hof.has("highest_combo") and not hof.has("longest_distance")):
 		_display_empty("Global records are clean.\nGo set one!")
 		return
-		
+
 	var local_player_name := LeaderboardService.get_player_name().to_lower()
-	
-	# Display Longest Distance Record
-	var dist_rec = hof.get("longest_distance")
-	_add_hof_heading("🏆 Longest Distance Record")
-	if dist_rec is Dictionary:
-		var p_name: String = dist_rec.get("player_name", "Anonymous")
-		var val: int = int(dist_rec.get("value", 0))
-		var seed_id: String = dist_rec.get("level_id", "")
-		var highlight := p_name.to_lower() == local_player_name and LeaderboardService.has_unique_name()
-		_add_hof_row(p_name, str(val) + " m", "Seed: " + seed_id, highlight)
+
+	# Display Longest Distance Records (top 3)
+	_add_hof_heading("🏆 Longest Distance — Top 3")
+	var dist_arr := _hof_to_array(hof.get("longest_distance"))
+	if dist_arr.is_empty():
+		_add_hof_row("—", "None", "0 m", "", false)
 	else:
-		_add_hof_row("None", "0 m", "", false)
-		
+		var rank := 1
+		for rec in dist_arr:
+			if not rec is Dictionary: continue
+			var p_name: String = rec.get("player_name", "Anonymous")
+			var val: int = int(rec.get("value", 0))
+			var seed_id: String = rec.get("level_id", "")
+			var highlight := p_name.to_lower() == local_player_name and LeaderboardService.has_unique_name()
+			_add_hof_row("#" + str(rank), p_name, str(val) + " m", "Seed: " + seed_id, highlight)
+			rank += 1
+
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 20)
 	_vbox.add_child(spacer)
-	
-	# Display Highest Combo Record
-	var combo_rec = hof.get("highest_combo")
-	_add_hof_heading("⚡ Highest Combo Record")
-	if combo_rec is Dictionary:
-		var p_name: String = combo_rec.get("player_name", "Anonymous")
-		var val: int = int(combo_rec.get("value", 0))
-		var seed_id: String = combo_rec.get("level_id", "")
-		var highlight := p_name.to_lower() == local_player_name and LeaderboardService.has_unique_name()
-		_add_hof_row(p_name, str(val) + "x combo", "Seed: " + seed_id, highlight)
+
+	# Display Highest Combo Records (top 3)
+	_add_hof_heading("⚡ Highest Combo — Top 3")
+	var combo_arr := _hof_to_array(hof.get("highest_combo"))
+	if combo_arr.is_empty():
+		_add_hof_row("—", "None", "0x", "", false)
 	else:
-		_add_hof_row("None", "0x", "", false)
+		var rank := 1
+		for rec in combo_arr:
+			if not rec is Dictionary: continue
+			var p_name: String = rec.get("player_name", "Anonymous")
+			var val: int = int(rec.get("value", 0))
+			var seed_id: String = rec.get("level_id", "")
+			var highlight := p_name.to_lower() == local_player_name and LeaderboardService.has_unique_name()
+			_add_hof_row("#" + str(rank), p_name, str(val) + "x combo", "Seed: " + seed_id, highlight)
+			rank += 1
+
+## Normalize a HOF stat field into an array of record dicts. Handles both the
+## new top-3 array format and legacy single-record maps.
+func _hof_to_array(raw) -> Array:
+	if raw is Array:
+		return raw
+	if raw is Dictionary and raw.has("value"):
+		return [raw]
+	return []
 
 func _clear_loading() -> void:
 	var l = _vbox.get_node_or_null("LoadingLabel")
@@ -399,40 +416,47 @@ func _add_hof_heading(text: String) -> void:
 	lbl.add_theme_constant_override("outline_size", 5)
 	_vbox.add_child(lbl)
 
-func _add_hof_row(player_name: String, value_str: String, details_str: String, highlight: bool) -> void:
+func _add_hof_row(rank_str: String, player_name: String, value_str: String, details_str: String, highlight: bool) -> void:
 	var panel := PanelContainer.new()
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_vbox.add_child(panel)
-	
+
 	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 18)
 	panel.add_child(hbox)
-	
+
+	# Rank
+	var rank_lbl := Label.new()
+	rank_lbl.text = rank_str
+	rank_lbl.custom_minimum_size = Vector2(48, 0)
+	rank_lbl.add_theme_font_size_override("font_size", 22)
+	hbox.add_child(rank_lbl)
+
 	# Name
 	var name_lbl := Label.new()
 	name_lbl.text = player_name
 	name_lbl.add_theme_font_size_override("font_size", 22)
-	name_lbl.custom_minimum_size = Vector2(240, 0)
+	name_lbl.custom_minimum_size = Vector2(200, 0)
 	hbox.add_child(name_lbl)
-	
+
 	# Record value
 	var val_lbl := Label.new()
 	val_lbl.text = value_str
 	val_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	val_lbl.add_theme_font_size_override("font_size", 22)
 	hbox.add_child(val_lbl)
-	
+
 	# Details (Seed code)
 	var det_lbl := Label.new()
 	det_lbl.text = details_str
 	det_lbl.add_theme_font_size_override("font_size", 18)
 	det_lbl.add_theme_color_override("font_color", Color(0.5, 0.45, 0.4))
 	hbox.add_child(det_lbl)
-	
+
 	if highlight:
-		for lbl in [name_lbl, val_lbl]:
+		for lbl in [rank_lbl, name_lbl, val_lbl]:
 			lbl.add_theme_color_override("font_color", UITheme.COL_GRASS_HI)
-			
+
 	UITheme.apply_current(panel)
 
 func _on_back() -> void:

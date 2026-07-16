@@ -33,11 +33,31 @@ service cloud.firestore {
 
     // ── Global Hall of Fame ──────────────────────────────────────────────────
     // Path: global/hall_of_fame
-    // Fields: highest_combo {player_name, value, level_id}
-    //         longest_distance {player_name, value, level_id}
+    // Fields: highest_combo (array of {player_id, player_name, value, level_id})
+    //         longest_distance (array of {player_id, player_name, value, level_id})
+    // Each array holds the top 3, one entry per player.
     match /global/hall_of_fame {
       allow read: if true;
       allow write: if true; // values are validated client-side before write
+    }
+
+    // ── Unique name registry ─────────────────────────────────────────────────
+    // Path: names/{lowercased_name}
+    // Fields: player_id (string, owner), display_name (string)
+    // Reserves a display name globally so counter suffixes stay stable.
+    match /names/{name} {
+      allow read: if true;
+      allow write: if request.resource.data.player_id is string;
+    }
+
+    // ── Community favourites ─────────────────────────────────────────────────
+    // Path: community_favorites/{player_id}
+    // Fields: player_name (string), seeds (array of seed-code strings)
+    // Each player uploads the seeds they've favourited; clients aggregate a
+    // star-count per seed across all docs.
+    match /community_favorites/{player_id} {
+      allow read: if true;
+      allow write: if request.resource.data.player_name is string;
     }
   }
 }

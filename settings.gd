@@ -77,6 +77,13 @@ func _ready() -> void:
 			Global.settings_cfg["blood_trail"] = v
 			Global.save_state()
 	)
+	# Dev toggle: swaps the player to a crunchier, less-floaty jump curve.
+	_add_checkbox_row(vbox, "Use new jump",
+		Global.settings_cfg.get("use_new_jump", false),
+		func(v: bool):
+			Global.settings_cfg["use_new_jump"] = v
+			Global.save_state()
+	)
 	if Global.is_unlocked("palette_switcher"):
 		_add_option_row(vbox, "Colour palette",
 			["Default", "Warm", "Cool", "Night", "Neon"],

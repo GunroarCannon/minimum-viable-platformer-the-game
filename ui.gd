@@ -685,7 +685,16 @@ func _check_and_submit_leaderboard() -> void:
 		
 	if Global.is_unlocked("player_name"):
 		if LeaderboardService.has_unique_name():
-			_submit_score(LeaderboardService.get_player_name())
+			if LeaderboardService.name_is_registered():
+				_submit_score(LeaderboardService.get_player_name())
+			else:
+				# Player has a name from before the global-uniqueness feature —
+				# claim it (may add a suffix) before submitting so the board only
+				# ever sees the unique form.
+				LeaderboardService.claim_unique_name(LeaderboardService.get_player_name(), func(resolved: String, _suffixed: bool):
+					_populate_profile_strip()
+					_submit_score(resolved)
+				)
 		else:
 			# Prompt player to choose a unique profile name
 			var dialog_script = load("res://enter_name_dialog.gd")

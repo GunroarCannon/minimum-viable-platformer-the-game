@@ -180,13 +180,29 @@ func _on_save() -> void:
 	if lower_name == "anonymous" or lower_name == "player" or lower_name == "null":
 		_show_error("Please choose a unique profile name")
 		return
-	
-	# Save name to config
-	Global.settings_cfg["player_name"] = new_name
-	Global.save_state()
-	
-	emit_signal("name_submitted", new_name)
-	_close()
+
+	# Claim the name globally so it's unique across all players. A taken name
+	# gets a small counter suffix (Bob → Bob2). claim_unique_name persists the
+	# resolved name into Global.settings_cfg itself.
+	_set_busy(true)
+	LeaderboardService.claim_unique_name(new_name, func(resolved: String, was_suffixed: bool):
+		_set_busy(false)
+		if was_suffixed:
+			# Reflect the resolved name and let the player see why it changed.
+			_line_edit.text = resolved
+			_show_error("\"%s\" was taken — you're now \"%s\"" % [new_name, resolved])
+			# Give them a beat to read it, then close.
+			await get_tree().create_timer(1.4).timeout
+		emit_signal("name_submitted", resolved)
+		_close()
+	)
+
+func _set_busy(busy: bool) -> void:
+	_save_btn.disabled = busy
+	_line_edit.editable = not busy
+	if _cancel_btn:
+		_cancel_btn.disabled = busy
+	_save_btn.text = "Checking…" if busy else "Save"
 
 func _show_error(err_text: String) -> void:
 	_err_lbl.text = err_text

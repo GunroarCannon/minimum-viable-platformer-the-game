@@ -87,6 +87,15 @@ func _ready() -> void:
 		jumps = 2
 	if _use_wall_jump:
 		wallJump = true
+	# Dev "new jump" — a crunchier, less-floaty curve. Stronger gravity makes the
+	# arc snappier; jumpHeight is retuned so the peak stays about the same
+	# (peak ∝ jumpMagnitude²/gravityScale, and jumpMagnitude = 10·jumpHeight·gravityScale),
+	# and a bigger descending factor makes the fall bite harder than the rise.
+	if bool(Global.settings_cfg.get("use_new_jump", false)):
+		gravityScale = 26.0
+		jumpHeight = 4.6
+		descendingGravityFactor = 1.7
+		terminalVelocity = 1100.0
 	if has_method("_updateData"):
 		_updateData()
 

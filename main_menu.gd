@@ -121,6 +121,14 @@ func _promote_to_topbar() -> void:
 	var cog := Control.new()
 	cog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	cog.set_script(preload("res://cog_icon.gd"))
+	# On the primitive (placeholder) menu the top bar is dark, so render the cog
+	# in a light colour and keep it still — the spin/dark-ink styling is reserved
+	# for the polished theme.
+	if UITheme.current_theme_name() != "polished":
+		cog.color = Color(0.90, 0.90, 0.92)
+		cog.hub_color = Color(0.30, 0.30, 0.34)
+		cog.accent_color = Color(0.70, 0.70, 0.74)
+		cog.slowly_spin = false
 	gear.add_child(cog)
 
 	var quit_btn := Button.new()

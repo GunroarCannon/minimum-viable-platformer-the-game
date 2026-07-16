@@ -15,6 +15,11 @@ const MAX_ZOOM := 1.8
 var _camera_offset: Vector2 = Vector2.ZERO
 var _zoom: float = 1.0
 var _panning: bool = false
+## True once the user has panned / zoomed / pinched. Until then we keep the
+## camera parked on the root node whenever the control is (re)sized, so the shop
+## always opens centred on "Unlock UI" even if the first layout pass hadn't
+## settled the control's size when _ready ran.
+var _user_moved: bool = false
 var _pressed_inside: bool = false
 var _press_pos: Vector2
 var _drag_start_offset: Vector2
@@ -40,10 +45,20 @@ const FOCUS_PULSE_SECS := 1.6
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	resized.connect(_on_resized)
 	_centre_on_root.call_deferred()
+
+func _on_resized() -> void:
+	# Keep the camera on the root until the user takes control. The Tree control
+	# lives inside a Body HBox, so its real size often isn't known when _ready's
+	# deferred centre runs — recentring on the first real resize fixes the
+	# "opens off-target, snaps on touch" bug.
+	if not _user_moved:
+		_centre_on_root()
 
 func _centre_on_root() -> void:
 	_camera_offset = size * 0.5
+	queue_redraw()
 
 func _grid_scale() -> Vector2:
 	return BASE_GRID_SCALE * _zoom
@@ -59,6 +74,7 @@ func _process(delta: float) -> void:
 	if Input.is_action_pressed("down"):  pan.y -= 1
 	if pan != Vector2.ZERO:
 		_camera_offset += pan * pan_speed_keyboard * delta
+		_user_moved = true
 		queue_redraw()
 	# Focus pulse ring animation.
 	if _focus_pulse_id != "":
@@ -94,6 +110,7 @@ func _is_revealed(sid: String) -> bool:
 func _zoom_around(new_zoom: float, focus: Vector2) -> void:
 	new_zoom = clamp(new_zoom, MIN_ZOOM, MAX_ZOOM)
 	if is_equal_approx(new_zoom, _zoom): return
+	_user_moved = true
 	# Keep the point under focus stationary in local space.
 	var world = (focus - _camera_offset) / _zoom
 	_zoom = new_zoom
@@ -120,12 +137,14 @@ func _gui_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			if event.shift_pressed:
 				_camera_offset.x += 80
+				_user_moved = true
 				queue_redraw()
 			else:
 				_zoom_around(_zoom * 1.12, event.position)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			if event.shift_pressed:
 				_camera_offset.x -= 80
+				_user_moved = true
 				queue_redraw()
 			else:
 				_zoom_around(_zoom / 1.12, event.position)
@@ -134,6 +153,7 @@ func _gui_input(event: InputEvent) -> void:
 			var delta = event.position - _press_pos
 			if not _moved_since_press and delta.length() > DRAG_THRESHOLD:
 				_moved_since_press = true
+				_user_moved = true
 			if _moved_since_press:
 				_camera_offset = _drag_start_offset + delta
 				queue_redraw()
@@ -182,6 +202,7 @@ func _gui_input(event: InputEvent) -> void:
 			var delta = event.position - _press_pos
 			if not _moved_since_press and delta.length() > DRAG_THRESHOLD:
 				_moved_since_press = true
+				_user_moved = true
 			if _moved_since_press:
 				_camera_offset = _drag_start_offset + delta
 				queue_redraw()
@@ -206,6 +227,7 @@ func selected_id() -> String:
 ## skill_selected and starts a highlight pulse so the user's eye is drawn to it.
 func focus_on(sid: String) -> void:
 	if not SkillsDB.SKILLS.has(sid): return
+	_user_moved = true
 	var target_zoom: float = clamp(FOCUS_ZOOM, MIN_ZOOM, MAX_ZOOM)
 	# Compute the offset that puts sid at the panel centre at the target zoom.
 	var world: Vector2 = SkillsDB.get_tree_pos(sid)
