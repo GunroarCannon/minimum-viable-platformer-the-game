@@ -581,6 +581,20 @@ var SKILLS: Dictionary = {
 		"icon": "CO",
 		"priority": 78,
 	},
+	"more_procgen": {
+		"id": "more_procgen", "name": "More Procgen",
+		"desc": "Adds a whole lot more level sections — extra platforms, pits, spike gauntlets and enemy combos.\nEvery run gets more varied.",
+		"cost": 4, "requires": ["procgen"], "branch": "level",
+		"icon": "MP",
+		"priority": 74,
+	},
+	"vertical_sections": {
+		"id": "vertical_sections", "name": "Vertical Sections",
+		"desc": "Levels can now climb up and plunge down, not just run flat.\nAscending and descending sections chain together based on the shape of what came before.",
+		"cost": 5, "requires": ["more_procgen"], "branch": "level",
+		"icon": "VS",
+		"priority": 68,
+	},
 	"level_library": {
 		"id": "level_library", "name": "Level Library",
 		"desc": "Each run's seed is saved so you can replay favourites.\nUnlocks the Level Library in the main menu.\nFavourite levels are never evicted. Best distances are tracked per seed.",

@@ -135,6 +135,78 @@ var TEMPLATES: Array = [
 	{ "pattern": [".d.......d...", "..............", ".............", ".............", "#############"], "d": "drill" },
 	{ "pattern": ["........", "........", "....j...", "########"], "j": "jumper" },
 	{ "pattern": ["........", "........", ".j....j.", "########"], "j": "jumper" },
+
+	# ═══════════════════════════════════════════════════════════════════
+	# MORE PROCGEN  (gate: more_procgen) — all horizontal, chain anywhere.
+	# Edge columns stay clear above the ground row so left/right stitching
+	# always locks onto the ground level.
+	# ═══════════════════════════════════════════════════════════════════
+	{ "pattern": ["................", "................", "................", "################"], "gate": "more_procgen" },
+	{ "pattern": ["...####..####...", "................", "................", "################"], "gate": "more_procgen" },
+	{ "pattern": ["....##....##....", "...####..####...", "................", "################"], "gate": "more_procgen" },
+	{ "pattern": ["................", "................", "..s..s..s..s..s.", "################"], "gate": "more_procgen", "s": "spike" },
+	{ "pattern": ["................", "......####......", "................", "####aaaaaa######"], "gate": "more_procgen" },
+	{ "pattern": ["................", "................", ".f..b...k....B..", "################"], "gate": "more_procgen", "f": "frog", "b": "bat", "k": "kobold", "B": "bomb" },
+	{ "pattern": ["................", "................", "...s......s.....", "##aa######aa####"], "gate": "more_procgen", "s": "spike" },
+	{ "pattern": ["................", ".....s..s.......", "....######......", "################"], "gate": "more_procgen", "s": "spike" },
+	{ "pattern": ["................", "...##.....##....", "......####......", "################"], "gate": "more_procgen" },
+	{ "pattern": ["................", "................", "f...k...b...j...", "################"], "gate": "more_procgen", "f": "frog", "k": "kobold", "b": "bat", "j": "jumper" },
+	{ "pattern": ["................", "....####...####.", "................", "..s..s..s..s..s.", "################"], "gate": "more_procgen", "s": "spike" },
+	{ "pattern": ["................", "................", "....########....", "################"], "gate": "more_procgen" },
+	{ "pattern": ["................", "................", "...B......B.....", "################"], "gate": "more_procgen", "B": "bomb" },
+	{ "pattern": ["................", "..S.........S...", "................", "################"], "gate": "more_procgen", "S": "shooter" },
+
+	# ═══════════════════════════════════════════════════════════════════
+	# VERTICAL SECTIONS  (gate: vertical_sections)
+	# The world auto-runs the player rightward, so these are shaped so the
+	# player is FORCED to change elevation as they cross:
+	#   • vertical_up  — an ascending staircase. Steps are exactly 1 tile tall
+	#     with wide (3–5 tile) treads so a single jump clears each riser while
+	#     the run momentum carries the player forward and up. The block ends
+	#     higher than it began, so `next_y` (the base spawn row for the next
+	#     section) moves UP.
+	#   • vertical_down — a descending staircase. The floor falls away one tile
+	#     at a time, so the player simply drops to each lower tread. `next_y`
+	#     moves DOWN.
+	# Every column is solid from its tread down to the block floor, so nobody
+	# falls into a void and the death floor (get_local_lowest_y in player.gd)
+	# tracks the new elevation automatically.
+	# ═══════════════════════════════════════════════════════════════════
+
+	# VU-a — gentle climb (up 2), 4-wide treads. Easiest riser; follows flat
+	# ground or a recovery after a drop, hands off to anything.
+	{ "pattern": ["........####", "....########", "############"],
+	  "gate": "vertical_sections", "type": "vertical_up",
+	  "allow_prev": ["horizontal", "vertical_down"], "allow_next": ["any"] },
+
+	# VU-b — climb (up 3), 3-wide treads. May crest into any vertical (another
+	# climb, or a drop that turns the top into a peak).
+	{ "pattern": [".........###", "......######", "...#########", "############"],
+	  "gate": "vertical_sections", "type": "vertical_up",
+	  "allow_prev": ["horizontal"], "allow_next": ["horizontal", "any_vertical"] },
+
+	# VU-c — long gentle climb (up 2), 5-wide treads. Very forgiving; follows
+	# anything, hands off to flat.
+	{ "pattern": ["..........#####", ".....##########", "###############"],
+	  "gate": "vertical_sections", "type": "vertical_up",
+	  "allow_prev": ["any"], "allow_next": ["horizontal"] },
+
+	# VD-a — gentle drop (down 2), 4-wide treads. Follows anything, hands off
+	# to anything.
+	{ "pattern": ["####........", "########....", "############"],
+	  "gate": "vertical_sections", "type": "vertical_down",
+	  "allow_prev": ["any"], "allow_next": ["any"] },
+
+	# VD-b — drop (down 3), 3-wide treads. May bottom out into any vertical (a
+	# deeper drop, or a climb that turns the base into a valley).
+	{ "pattern": ["###.........", "######......", "#########...", "############"],
+	  "gate": "vertical_sections", "type": "vertical_down",
+	  "allow_prev": ["horizontal", "vertical_up"], "allow_next": ["horizontal", "any_vertical"] },
+
+	# VD-c — deep drop (down 4), 3-wide treads. Only after flat; hands off to flat.
+	{ "pattern": ["###............", "######.........", "#########......", "############...", "###############"],
+	  "gate": "vertical_sections", "type": "vertical_down",
+	  "allow_prev": ["horizontal"], "allow_next": ["horizontal"] },
 ]
 
 # Templates available BEFORE procgen is unlocked.
@@ -349,9 +421,13 @@ func _template_admissible(tmpl: Dictionary) -> bool:
 	# Ramps disqualify.
 	for row in pattern:
 		if "/" in row or "\\" in row: return false
-	# Entity gating.
+	# Unlock gate for whole template groups (more_procgen, vertical_sections).
+	var gate: String = tmpl.get("gate", "")
+	if gate != "" and not Global.is_unlocked(gate):
+		return false
+	# Entity gating. Skip non-entity metadata keys.
 	for key in tmpl.keys():
-		if key == "pattern": continue
+		if key in ["pattern", "gate", "type", "allow_prev", "allow_next"]: continue
 		var entity_id: String = tmpl[key]
 		if entity_id == "spike": continue
 		if not _is_entity_allowed(entity_id): return false
@@ -375,6 +451,58 @@ func _build_active_template_indices() -> Array:
 			out.append(i)
 	if out.is_empty():
 		out.append(TEMPLATE_STARTER_IDX)
+	return out
+
+
+# ─── SECTION-TYPE CHAINING ────────────────────────────────────────────────
+# Every template has a `type`: "horizontal" (default — the flat/plateau kind we
+# have always had), "vertical_up" (climbs), or "vertical_down" (descends).
+# Templates may declare `allow_prev` / `allow_next` lists that gate which types
+# can sit on either side of them. Recognised tokens:
+#   "horizontal", "vertical_up", "vertical_down"  — concrete types
+#   "any"           — matches anything
+#   "any_vertical"  — matches vertical_up OR vertical_down
+# A candidate section may follow the previous one only if BOTH the previous
+# section's allow_next accepts the candidate's type AND the candidate's
+# allow_prev accepts the previous section's type.
+
+func _tmpl_type(tmpl: Dictionary) -> String:
+	return tmpl.get("type", "horizontal")
+
+func _tmpl_allow_prev(tmpl: Dictionary) -> Array:
+	return tmpl.get("allow_prev", ["any"])
+
+func _tmpl_allow_next(tmpl: Dictionary) -> Array:
+	return tmpl.get("allow_next", ["any"])
+
+func _type_matches(allow_list: Array, actual_type: String) -> bool:
+	for a in allow_list:
+		if a == "any":
+			return true
+		if a == "any_vertical" and (actual_type == "vertical_up" or actual_type == "vertical_down"):
+			return true
+		if a == actual_type:
+			return true
+	return false
+
+## From the pool of admissible indices, keep only those whose type chains legally
+## after a section of `prev_type` whose allow_next list is `prev_allow_next`.
+## Falls back to horizontal-only (then the whole pool) so a run never dead-ends.
+func _chainable_indices(pool: Array, prev_type: String, prev_allow_next: Array) -> Array:
+	var out: Array = []
+	for idx in pool:
+		var tmpl: Dictionary = TEMPLATES[idx]
+		if not _type_matches(prev_allow_next, _tmpl_type(tmpl)):
+			continue
+		if not _type_matches(_tmpl_allow_prev(tmpl), prev_type):
+			continue
+		out.append(idx)
+	if out.is_empty():
+		for idx in pool:
+			if _tmpl_type(TEMPLATES[idx]) == "horizontal":
+				out.append(idx)
+	if out.is_empty():
+		out = pool
 	return out
 
 
@@ -447,13 +575,22 @@ func generate_level() -> void:
 	var lowest_y := -99999.0
 	var all_strips: Array = []
 
+	# Section-type chaining state. Block 0 is the flat safe start.
+	var prev_type := "horizontal"
+	var prev_allow_next: Array = ["any"]
+
 	for i in range(level_width_blocks):
 		var tmpl_idx: int
 		if i == 0:
 			tmpl_idx = TEMPLATE_STARTER_IDX
 		else:
-			tmpl_idx = active_indices[rng.randi() % active_indices.size()]
+			var candidates := _chainable_indices(active_indices, prev_type, prev_allow_next)
+			tmpl_idx = candidates[rng.randi() % candidates.size()]
 		var tmpl: Dictionary = TEMPLATES[tmpl_idx]
+
+		# Remember this section's type + hand-off rule for the next iteration.
+		prev_type = _tmpl_type(tmpl)
+		prev_allow_next = _tmpl_allow_next(tmpl)
 
 		var pattern: Array = tmpl["pattern"]
 		var block_w: int = pattern[0].length()

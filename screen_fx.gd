@@ -35,6 +35,8 @@ func _ready() -> void:
 	_try_add_pass("chromatic_aberration", "res://shaders/chromatic.gdshader", self)
 
 	# ── All other passes: layer 96+ (above UI) ──────────────────────────────
+	# palette_shift is driven by Global.color_palette (not an unlock), see _process.
+	_try_add_pass("palette_shift",  "res://shaders/palette_shift.gdshader",  null)
 	_try_add_pass("color_grading",  "res://shaders/color_grading.gdshader",  null)
 	_try_add_pass("fog_cover",      "res://shaders/fog_cover.gdshader",       null)
 	_try_add_pass("vignette",       "res://shaders/vignette.gdshader",        null)
@@ -98,6 +100,12 @@ func _process(delta: float) -> void:
 	for key in passes.keys():
 		var r: ColorRect = passes[key]
 		var enabled: bool = Global.is_unlocked(key) and not Global.use_primitives
+		# palette_shift is gated on the active palette, not an unlock. It recolours
+		# the whole scene whenever the player has picked a non-default palette.
+		if key == "palette_shift":
+			enabled = Global.color_palette != "default" and not Global.use_primitives
+			if enabled and r.material:
+				r.material.set_shader_parameter("hue_shift", Global.palette_hue() / 360.0)
 		# fog_cover only makes sense during gameplay (it covers the lower screen like an abyss).
 		if key == "fog_cover" and not in_level:
 			enabled = false

@@ -134,6 +134,17 @@ func palette_tint() -> Color:
 		"neon":  return Color(1.20, 0.70, 1.20)
 		_:       return Color.WHITE
 
+## Hue rotation (in degrees, 0–360) applied full-screen by the palette_shift
+## ScreenFX pass. "default" is 0 (no shift). Single source of truth for the
+## palette recolour — screen_fx.gd reads this each frame.
+func palette_hue() -> float:
+	match color_palette:
+		"warm":  return 25.0
+		"cool":  return 180.0
+		"night": return 210.0
+		"neon":  return 290.0
+		_:       return 0.0
+
 ## Persisted settings (audio, theme, etc.)
 var settings_cfg: Dictionary = {
 	"master_volume": 0.8,
@@ -348,6 +359,17 @@ func add_tokens(n: int) -> void:
 	run_tokens_gained += earned
 	stat_add("total_points_earned", earned)
 	add_run_score(earned)
+	save_state()
+
+## Credit exactly `n` tokens with no combo/enemy multipliers applied. Coins use
+## this so one coin is always worth exactly its face value (1), keeping the
+## credited amount in sync with the +1 TokenPop popup.
+func add_tokens_flat(n: int) -> void:
+	if n <= 0: return
+	tokens += n
+	run_tokens_gained += n
+	stat_add("total_points_earned", n)
+	add_run_score(n)
 	save_state()
 
 ## Adds to the current-run score. Called by ComboSystem when tokens are earned
