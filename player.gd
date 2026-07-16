@@ -909,7 +909,7 @@ func _tick_coin_magnet(_delta: float) -> void:
 ## perform a parry: the hit is absorbed, the enemy bounces away, and a mid-air
 ## jump is restored. Gated on \"parry_mechanic\" skill.
 
-const PARRY_WINDOW    := 0.15   # seconds the parry input is accepted
+const PARRY_WINDOW    := 0.315   # seconds the parry input is accepted
 const PARRY_ENEMY_VEL := 800.0  # px/s the parried enemy flies back
 const PARRY_BOOST_VEL := 860.0  # px/s the player is launched up on a non-stomp parry
 const PARRY_IGNORE_TIME := 1.1  # seconds the parried enemy is phased-out (no collision)
@@ -921,7 +921,7 @@ const PARRY_ZOOM_OUT  := 0.40   # zoom-out tween back to the previous zoom
 # Proactive parry sensor — open the window when a hazard enters a box AHEAD of and
 # AROUND the player, before we are already touching it. Auto-run always moves
 # right, so the box reaches forward (and up, to catch descending smashers/drills).
-const PARRY_SCAN_FWD  := Vector2(160.0, 95.0)    # +x forward, +y down extents
+const PARRY_SCAN_FWD  := Vector2(90.0, 100.0)    # +x forward, +y down extents
 const PARRY_SCAN_BACK := Vector2(-55.0, -175.0)  # -x behind, -y up extents
 
 # After a successful parry, drop time then ease it back to normal over this many
