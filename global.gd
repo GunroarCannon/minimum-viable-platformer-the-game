@@ -145,6 +145,16 @@ func palette_hue() -> float:
 		"neon":  return 290.0
 		_:       return 0.0
 
+## Vivid base colour the full-screen palette_shift pass maps every pixel toward.
+## screen_fx.gd reads this each frame so grey/white pixels recolour too.
+func palette_shift_color() -> Color:
+	match color_palette:
+		"warm":  return Color(1.00, 0.55, 0.15)
+		"cool":  return Color(0.25, 0.60, 1.00)
+		"night": return Color(0.35, 0.40, 0.90)
+		"neon":  return Color(1.00, 0.20, 1.00)
+		_:       return Color(1.0, 1.0, 1.0)
+
 ## Persisted settings (audio, theme, etc.)
 var settings_cfg: Dictionary = {
 	"master_volume": 0.8,

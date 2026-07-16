@@ -55,8 +55,9 @@ func _on_area_entered(area: Area2D) -> void:
 func _collect() -> void:
 	_collected = true
 	AudioManager.play("gem_gather", 0.0, 0.04)
-	Global.add_tokens_flat(token_value)
-	TokenPop.spawn(get_parent(), global_position, token_value)
+	# A coin is always worth exactly ONE token — never two.
+	Global.add_tokens_flat(1)
+	TokenPop.spawn(get_parent(), global_position, 1)
 	var p := CPUParticles2D.new()
 	p.texture = Global.get_circle_texture()
 	p.emitting = true

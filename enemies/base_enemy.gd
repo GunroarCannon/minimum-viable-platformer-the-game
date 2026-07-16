@@ -60,8 +60,20 @@ func _physics_process(delta: float) -> void:
 	velocity.y += 980 * gravity_scale * delta
 	_custom_process(delta)
 	move_and_slide()
+	_check_player_contact()
 	if Global.debug_toggles.get("show_collisions", false):
 		queue_redraw()
+
+## Continuous (level-triggered) contact check. body/area_entered only fire on the
+## FRAME an overlap begins, so an overlap that already existed (enemy spawned on
+## the player, monitoring toggled, etc.) is silently missed. Re-running the hit
+## logic each physics frame for whatever currently overlaps closes that hole.
+func _check_player_contact() -> void:
+	if _is_dying: return
+	var hb = get_node_or_null("Hitbox")
+	if hb == null or not hb.monitoring: return
+	for a in hb.get_overlapping_areas():
+		_on_hitbox_area_entered(a)
 
 func _custom_process(_delta: float) -> void:
 	pass
@@ -86,12 +98,19 @@ func _on_hitbox_area_entered(area: Area2D) -> void:
 	if _is_dying: return
 	var body = area.get_parent()
 	if body and body.has_method("die") and not body.get("is_dead"):
-		# Player centre more than 30 px above our centre → overhead / head contact → no kill
-		if body.global_position.y < global_position.y - 30:
+		# Genuine stomp (player descending onto us from above) → the foot sensor
+		# handles the bounce; we must NOT kill. Everything else — side hits and
+		# something dropping onto the player's head — is lethal.
+		if body.has_method("is_stomp_on"):
+			if body.is_stomp_on(global_position.y):
+				return
+		elif body.global_position.y < global_position.y - 30:
 			return
-		# Parry mechanic: give the player a chance to parry this hit.
-		if body.has_method("try_open_parry_window") and body.try_open_parry_window(self):
-			return  # parry window opened — skip the kill; timer resolves it
+		# The player just parried something → phasing through, invulnerable.
+		if body.has_method("is_parry_invuln") and body.is_parry_invuln():
+			return
+		# Un-parried contact is always lethal (the look-ahead scan already gave
+		# the parry chance BEFORE this point).
 		body.die(false, _display_name())
 
 

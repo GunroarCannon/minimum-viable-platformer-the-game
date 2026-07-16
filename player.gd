@@ -109,6 +109,12 @@ func _draw() -> void:
 func _on_debug_draw() -> void:
 	if Global.debug_toggles.get("show_collisions", false):
 		_debug_canvas.draw_rect(Rect2(-40, -55, 80, 110), Color.GREEN, false, 2.0)
+		# Parry look-ahead box (the shape scanned for imminent hazards). Turns
+		# solid-ish gold while a window is actually open.
+		if _use_parry:
+			var box := Rect2(PARRY_SCAN_BACK, PARRY_SCAN_FWD - PARRY_SCAN_BACK)
+			var col := Color(1.0, 0.85, 0.1, 0.9) if _parry_window_timer > 0.0 else Color(1.0, 0.85, 0.1, 0.5)
+			_debug_canvas.draw_rect(box, col, false, 2.0)
 
 func _exit_tree() -> void:
 	# Clear any synthetically held actions so they don't bleed into UI.
@@ -466,6 +472,10 @@ func _physics_process(delta: float) -> void:
 		Global.stat_add("total_distance_m", d - Global.last_run_distance)
 		Global.last_run_distance = d
 
+	# Proactive parry look-ahead (opens the window before we collide).
+	if _use_parry:
+		_scan_for_parry()
+
 func _squash_and_stretch(target_scale_modifier: Vector2) -> void:
 	if not anim: return
 	var base_scale = animScaleLock
@@ -495,6 +505,16 @@ func _process(delta: float) -> void:
 	if is_dead:
 		ScreenFX.wobble_intensity = 0.0
 		return
+	# Post-parry slow-motion ramp back to full speed (wall-clock timed so it's
+	# unaffected by the very time-scale it's driving).
+	if _parry_slow_active:
+		var e := float(Time.get_ticks_msec() - _parry_slow_start_ms) / float(PARRY_SLOW_DUR_MS)
+		if e >= 1.0:
+			Engine.time_scale = 1.0
+			_parry_slow_active = false
+		else:
+			var s := e * e * (3.0 - 2.0 * e)  # smoothstep
+			Engine.time_scale = lerp(PARRY_SLOW_MIN, 1.0, s)
 	if Global.debug_toggles.get("show_collisions", false):
 		queue_redraw()
 	# Drive in-air warp shader intensity from vertical speed.
@@ -515,7 +535,9 @@ func _process(delta: float) -> void:
 			Global.stat_add("jumps", 1)
 			_takeoff_y = global_position.y
 			_peak_y = global_position.y
-			if _use_backflip:
+			# Backflip only when this jump happens mid-combo (parry backflips
+			# are triggered separately in _execute_parry).
+			if _use_backflip and ComboSystem.current_multiplier() > 0:
 				_do_backflip()
 		elif on_floor and _takeoff_y != 0.0:
 			var jump_h := int(_takeoff_y - _peak_y)
@@ -704,6 +726,7 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 
 	is_dead = true
 	Engine.time_scale = 1.0 # Ensure time is restored if killed during a time-slow (like parry)
+	_parry_slow_active = false
 	if cause == "" and is_fall:
 		cause = "the fall"
 	Global.last_death_cause = cause
@@ -895,9 +918,63 @@ const PARRY_ZOOM_FACTOR := 1.6  # how hard the camera punches in on a parry
 const PARRY_ZOOM_IN   := 0.10   # zoom-in tween duration (real seconds)
 const PARRY_ZOOM_OUT  := 0.40   # zoom-out tween back to the previous zoom
 
+# Proactive parry sensor — open the window when a hazard enters a box AHEAD of and
+# AROUND the player, before we are already touching it. Auto-run always moves
+# right, so the box reaches forward (and up, to catch descending smashers/drills).
+const PARRY_SCAN_FWD  := Vector2(160.0, 95.0)    # +x forward, +y down extents
+const PARRY_SCAN_BACK := Vector2(-55.0, -175.0)  # -x behind, -y up extents
+
+# After a successful parry, drop time then ease it back to normal over this many
+# wall-clock milliseconds so the world (and camera scroll) slows then speeds up.
+const PARRY_SLOW_MIN    := 0.35
+const PARRY_SLOW_DUR_MS := 900
+
+# Descending-stomp gate. A contact is treated as a stomp (and never a lethal side
+# hit) only when the player is moving down AND is above the other body's centre.
+const STOMP_SKIP_VEL := 40.0
+
 var _parry_window_timer: float = 0.0  # > 0 while window is open
 var _parry_attacker: Node = null      # enemy that opened the parry window
 var _parry_consumed: bool = false
+var _parry_seen: Dictionary = {}      # hazards already offered a window this pass
+var _parry_slow_active: bool = false
+var _parry_slow_start_ms: int = 0
+var _parry_invuln_until_ms: int = 0    # wall-clock ms until which hazards can't kill
+
+## True when the player is descending onto something whose centre is CLEARLY
+## below them — i.e. a genuine overhead stomp handled by the foot sensor, not a
+## lethal side/head hit. Read by base_enemy.gd, smasher.gd, drill.gd, spike.gd
+## and bomb.gd. The -30 margin keeps side brushes (roughly equal centres) lethal.
+func is_stomp_on(other_y: float) -> bool:
+	return velocity.y > STOMP_SKIP_VEL and global_position.y < other_y - 30.0
+
+## Brief window of invulnerability opened by a successful parry so the player
+## phases cleanly UP through the hazard while it is being disabled. Read by every
+## hazard before it kills. Wall-clock timed so it survives the parry slow-mo.
+func is_parry_invuln() -> bool:
+	return Time.get_ticks_msec() < _parry_invuln_until_ms
+
+## Scan for an imminent hazard inside the look-ahead box and open the parry
+## window early so the player can react before the collision lands.
+func _scan_for_parry() -> void:
+	if _parry_window_timer > 0.0: return
+	var lo := global_position + PARRY_SCAN_BACK
+	var hi := global_position + PARRY_SCAN_FWD
+	var seen_now: Dictionary = {}
+	for h in get_tree().get_nodes_in_group("hazards"):
+		if not is_instance_valid(h): continue
+		if not h is Node2D: continue
+		var hp: Vector2 = (h as Node2D).global_position
+		if hp.x < lo.x or hp.x > hi.x: continue
+		if hp.y < lo.y or hp.y > hi.y: continue
+		# Skip already-phased (parried) hazards and things we're cleanly stomping.
+		if h is CanvasItem and (h as CanvasItem).modulate.a < 0.6: continue
+		if is_stomp_on(hp.y): continue
+		seen_now[h] = true
+		if _parry_seen.has(h): continue   # already offered while it was in the box
+		if _parry_window_timer <= 0.0 and try_open_parry_window(h):
+			seen_now[h] = true
+	_parry_seen = seen_now
 
 ## Called from _on_hitbox_ area_entered path in base_enemy.gd via signal or
 ## direct call when the player body sensor overlaps a hitbox. We intercept
@@ -940,7 +1017,9 @@ func try_open_parry_window(attacker: Node) -> bool:
 	_parry_window_timer = PARRY_WINDOW
 	_parry_attacker = attacker
 	_parry_consumed = false
-	
+	# A fresh window overrides any post-parry slow-mo ramp still in progress.
+	_parry_slow_active = false
+
 	# Slow time drastically to give the player a clear window to react.
 	Engine.time_scale = 0.15
 	_spawn_floating_text("!", Color(1.0, 0.9, 0.1))
@@ -963,17 +1042,21 @@ func _tick_parry(delta: float) -> void:
 	if Input.is_action_just_pressed("jump") and not _parry_consumed:
 		_execute_parry()
 	if _parry_window_timer <= 0.0 and not _parry_consumed:
-		# Window expired without a parry — the hit lands normally.
+		# Window lapsed with no parry. We do NOT kill here — an un-parried hazard
+		# kills on ACTUAL contact (handled by each hazard). If the player never
+		# touches it, they simply dodged it. This closes the "jumped through it"
+		# hole where a deferred kill missed a fast-moving player.
 		Engine.time_scale = 1.0
-		_spawn_floating_text("LATE!", Color(1.0, 0.3, 0.2))
 		_parry_attacker = null
-		if not is_dead:
-			die(false, "an enemy")
+		_spawn_floating_text("MISS", Color(0.8, 0.8, 0.85))
 
 func _execute_parry() -> void:
 	if _parry_consumed: return
 	_parry_consumed = true
 	_parry_window_timer = 0.0
+	# Grant a brief phase so the launch-up carries us cleanly THROUGH the hazard
+	# while its collision is being disabled (covers the deferred-disable frame).
+	_parry_invuln_until_ms = Time.get_ticks_msec() + 350
 
 	_spawn_floating_text("PARRY!", Color(0.1, 1.0, 0.5), true)
 
@@ -994,20 +1077,35 @@ func _execute_parry() -> void:
 
 	# Was this a stomp-style parry (descending onto the enemy) or a side hit?
 	# Only a stomp destroys the creature; a side parry deflects it and launches
-	# the player upward instead.
-	var was_stomp := false
-	if is_instance_valid(_parry_attacker):
-		was_stomp = velocity.y > 50.0 \
-			and global_position.y <= _parry_attacker.global_position.y + 12.0
+	# the player upward instead. Bombs always launch the player up AND detonate.
+	var atk := _parry_attacker
+	var is_bomb := false
+	if is_instance_valid(atk) and atk.get_script():
+		is_bomb = atk.get_script().resource_path.ends_with("bomb.gd")
 
-	if was_stomp and is_instance_valid(_parry_attacker) and _parry_attacker.has_method("stomp_by"):
-		_parry_attacker.stomp_by(self)
-	else:
-		# Non-stomp parry: boost the player up and phase through the creature so
-		# the deflected hit can't immediately re-connect.
+	var was_stomp := false
+	if is_instance_valid(atk):
+		was_stomp = velocity.y > 50.0 \
+			and global_position.y <= atk.global_position.y + 12.0
+
+	if is_bomb and is_instance_valid(atk) and atk.has_method("parry_detonate"):
+		# Detonate the bomb (visuals + knockback) but it won't kill us, then
+		# launch straight up out of the blast.
+		atk.parry_detonate()
 		velocity.y = -PARRY_BOOST_VEL
-		_deflect_and_phase(_parry_attacker, PARRY_IGNORE_TIME)
+	elif was_stomp and is_instance_valid(atk) and atk.has_method("stomp_by"):
+		atk.stomp_by(self)
+	else:
+		# Non-stomp parry: boost the player up and phase through the hazard so
+		# the deflected hit can't immediately re-connect. This is the path taken
+		# by smashers, drills and spikes — all send the player UP.
+		velocity.y = -PARRY_BOOST_VEL
+		_deflect_and_phase(atk, PARRY_IGNORE_TIME)
 	_parry_attacker = null
+
+	# Flourish: backflip on every parry.
+	if _use_backflip:
+		_do_backflip()
 
 	# Cinematic camera: punch in, hold a frozen frame, then ease back out.
 	_parry_camera_sequence()
@@ -1022,7 +1120,7 @@ func _execute_parry() -> void:
 
 ## Temporarily disables a parried enemy's hitbox so the deflected hit can't
 ## re-connect, shoves the creature away, and restores it after `secs` real seconds.
-func _deflect_and_phase(enemy: Node, secs: float) -> void:
+func _deflect_and_phase(enemy, secs: float) -> void:
 	if not is_instance_valid(enemy): return
 	# Shove the creature back and up.
 	var ev = enemy.get("velocity")
@@ -1034,6 +1132,11 @@ func _deflect_and_phase(enemy: Node, secs: float) -> void:
 	if hb:
 		hb.set_deferred("monitoring", false)
 		hb.set_deferred("monitorable", false)
+	# Area2D hazards (smasher, drill, spike) have no Hitbox child — disable their
+	# own detection so the player only passes through AFTER a successful parry.
+	if enemy is Area2D:
+		enemy.set_deferred("monitoring", false)
+		enemy.set_deferred("monitorable", false)
 	if enemy is CanvasItem:
 		enemy.modulate.a = 0.45
 	var t := get_tree().create_timer(secs, true, false, true)
@@ -1043,6 +1146,9 @@ func _deflect_and_phase(enemy: Node, secs: float) -> void:
 		if h:
 			h.set_deferred("monitoring", true)
 			h.set_deferred("monitorable", true)
+		if enemy is Area2D:
+			enemy.set_deferred("monitoring", true)
+			enemy.set_deferred("monitorable", true)
 		if enemy is CanvasItem:
 			enemy.modulate.a = 1.0
 	)
@@ -1056,7 +1162,7 @@ func _parry_camera_sequence() -> void:
 		Engine.time_scale = 0.0
 		await get_tree().create_timer(PARRY_FREEZE, true, false, true).timeout
 		if not is_dead:
-			Engine.time_scale = 1.0
+			_begin_parry_slowmo()
 		return
 
 	var prev_zoom: Vector2 = cam.zoom
@@ -1074,12 +1180,22 @@ func _parry_camera_sequence() -> void:
 		Engine.time_scale = 1.0
 		return
 
-	# Phase C — ease back out to the previous zoom.
-	Engine.time_scale = 1.0
+	# Phase C — ease back out to the previous zoom while time slowly ramps up.
+	_begin_parry_slowmo()
 	if is_instance_valid(cam):
 		var tout := create_tween().set_process_mode(Tween.TWEEN_PROCESS_IDLE)
 		tout.tween_property(cam, "zoom", prev_zoom, PARRY_ZOOM_OUT) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+## Kick off the post-parry slow-motion: drop time now, then _process eases it
+## back to 1.0 over PARRY_SLOW_DUR_MS of wall-clock time.
+func _begin_parry_slowmo() -> void:
+	if is_dead:
+		Engine.time_scale = 1.0
+		return
+	_parry_slow_active = true
+	_parry_slow_start_ms = Time.get_ticks_msec()
+	Engine.time_scale = PARRY_SLOW_MIN
 
 
 # ─── GHOST MODE ────────────────────────────────────────────────────────────

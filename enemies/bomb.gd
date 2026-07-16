@@ -57,28 +57,42 @@ func _custom_process(delta: float) -> void:
 ## Top contact (stomp) is handled by the foot sensor and triggers a normal stomp-die.
 func _on_hitbox_area_entered(area: Area2D) -> void:
 	if _is_dying: return
-	var body = area.get_parent()
-	if body == null: return
-	if not body.has_method("die"): return
-	if body.get("is_dead"): return
-	# Skip head-stomp: player centre clearly above our centre → foot sensor handles it.
-	if body.global_position.y < global_position.y - 30:
-		return
-	# Immediate explosion — no fuse needed when something walks into us.
-	if state != "exploding":
-		_explode()
+	_bomb_contact(area.get_parent())
 
 func _on_body_entered_bomb(body: Node2D) -> void:
 	if _is_dying: return
 	# Ignore floor tiles and self.
 	if body == self: return
 	if body.is_in_group("solid_tiles"): return
+	_bomb_contact(body)
+
+## Shared contact resolution. The player gets the stomp/parry treatment; anything
+## else that walks into a live bomb sets it off.
+func _bomb_contact(body: Node) -> void:
+	if _is_dying or state == "exploding": return
+	if body == null or not body.has_method("die"): return
 	if body.get("is_dead"): return
-	# Top contact = stomp handled by foot sensor. Side/below = explode.
-	if body.global_position.y < global_position.y - 30:
-		return
-	if state != "exploding":
-		_explode()
+	if body.has_method("try_open_parry_window"):
+		# Genuine stomp → foot sensor handles it.
+		if body.has_method("is_stomp_on") and body.is_stomp_on(global_position.y):
+			return
+		elif not body.has_method("is_stomp_on") and body.global_position.y < global_position.y - 30:
+			return
+		# Just parried (this bomb is detonated separately) → don't chain-explode.
+		if body.has_method("is_parry_invuln") and body.is_parry_invuln():
+			return
+	_explode()
+
+## Parry response: detonate with full visuals + knockback but never kill the
+## player who parried us. Called from player._execute_parry().
+func parry_detonate() -> void:
+	if _is_dying or state == "exploding": return
+	state = "exploding"
+	_is_dying = true
+	if player and player.has_method("shake_camera"):
+		player.shake_camera(40.0, 0.5)
+	_apply_explosion_knockback(explosion_radius * 1.5)
+	queue_free()
 
 const KNOCKBACK_IMPULSE := 3500.0
 const KNOCKBACK_LIFT := 1000.0

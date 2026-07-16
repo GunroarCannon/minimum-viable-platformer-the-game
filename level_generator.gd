@@ -156,6 +156,34 @@ var TEMPLATES: Array = [
 	{ "pattern": ["................", "................", "...B......B.....", "################"], "gate": "more_procgen", "B": "bomb" },
 	{ "pattern": ["................", "..S.........S...", "................", "################"], "gate": "more_procgen", "S": "shooter" },
 
+	# ── Extra creative sections (gate: more_procgen) ─────────────────────────
+	# All 16 wide with clear left/right edge columns above the ground row so they
+	# stitch onto flat ground from either side.
+	# Twin sky platforms patrolled by bats.
+	{ "pattern": ["................", "...####..####...", ".b..........b...", "................", "################"], "gate": "more_procgen", "b": "bat" },
+	# Spike gauntlet with a mid-air rest platform.
+	{ "pattern": ["................", "......####......", "................", ".s.s.s..s.s.s.s.", "################"], "gate": "more_procgen", "s": "spike" },
+	# Parry corridor: two bombs flanking a kobold.
+	{ "pattern": ["................", "................", "...B....k....B..", "################"], "gate": "more_procgen", "B": "bomb", "k": "kobold" },
+	# Floating ascending stepping-stones.
+	{ "pattern": [".............##.", "..........##....", ".......##.......", "....##..........", "################"], "gate": "more_procgen" },
+	# Drill dropping into a jump-the-gap pit.
+	{ "pattern": ["................", "................", "......d.........", "###aaaaaaaa#####"], "gate": "more_procgen", "d": "drill" },
+	# Kobolds patrolling a raised deck over a spike bed.
+	{ "pattern": ["....k......k....", "....########....", "................", "..s..s..s..s..s.", "################"], "gate": "more_procgen", "k": "kobold", "s": "spike" },
+	# Bumpy mogul ground (coin-friendly).
+	{ "pattern": ["................", "................", "..##..##..##..#.", "################"], "gate": "more_procgen" },
+	# Twin shooters covering an open lane.
+	{ "pattern": ["................", "................", "...S........S...", "................", "################"], "gate": "more_procgen", "S": "shooter" },
+	# Big frog and a bomb sharing an arena.
+	{ "pattern": ["................", "................", ".....F......B...", "################"], "gate": "more_procgen", "F": "big_frog", "B": "bomb" },
+	# Zig-zag ledges with a frog underneath.
+	{ "pattern": ["................", "..###.....###...", ".......f........", "................", "################"], "gate": "more_procgen", "f": "frog" },
+	# Smasher hallway — time the run between two crushers.
+	{ "pattern": ["...T......T.....", "................", "................", "................", "################"], "gate": "more_procgen", "T": "smasher" },
+	# Bat-guarded stepping platforms.
+	{ "pattern": ["................", "....##....##....", "...b........b...", "................", "################"], "gate": "more_procgen", "b": "bat" },
+
 	# ═══════════════════════════════════════════════════════════════════
 	# VERTICAL SECTIONS  (gate: vertical_sections)
 	# The world auto-runs the player rightward, so these are shaped so the

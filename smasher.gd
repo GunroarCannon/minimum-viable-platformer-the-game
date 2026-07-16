@@ -111,6 +111,13 @@ func _process(delta: float) -> void:
 						AudioManager.play("grunt", -4.0, 0.12)
 		_last_tex = sprite.texture
 
+	# Continuous overlap check so a body already inside our box (not just one
+	# entering this frame) is still crushed. The top is safe via the one-way
+	# StaticBody2D + the standing-on-top guard inside _on_body_entered.
+	if player and is_instance_valid(player) and monitoring:
+		if not player.get("is_dead") and overlaps_body(player):
+			_on_body_entered(player)
+
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not sprite or not sprite.texture:
 		var rect = Rect2(-smasher_size / 2, smasher_size)
@@ -140,17 +147,28 @@ func _on_body_entered(body: Node2D) -> void:
 	if body_center_y < smasher_top_y + 20.0:
 		return
 
-	if state == "falling" or state == "smashed":
-		if body is BaseEnemy:
+	if body is BaseEnemy:
+		if state == "falling" or state == "smashed":
 			body.die_torn(Vector2(0, fall_speed))
-		elif body.has_method("die") and not body.get("is_dead"):
-			body.die(false, "a smasher", true)
-	elif state == "idle" or state == "rising":
-		if body.has_method("die") and not body.get("is_dead"):
-			body.die_torn(false, "a smasher", true)
-			
-		elif body is BaseEnemy:
+		else:
 			body.die_torn(Vector2.ZERO)
+		return
+
+	# Player (or anything else with die()): defer to the parry system so the hit
+	# can be parried (which launches the player UP and phases us out); otherwise
+	# it's a lethal crush.
+	if body.has_method("die"):
+		_hit_player(body)
+
+## Give the player a parry chance; if none is taken, crush them. Returns nothing.
+func _hit_player(body: Node) -> void:
+	if not body.has_method("die") or body.get("is_dead"):
+		return
+	# Just parried → phasing through, invulnerable. Smashers are not stompable
+	# from the side/bottom; the safe top is handled by the caller's top guard.
+	if body.has_method("is_parry_invuln") and body.is_parry_invuln():
+		return
+	body.die(false, "a smasher", true)
 
 func die() -> void:
 	if sprite and Global.gfx("enemy_sprites"):

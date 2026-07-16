@@ -105,6 +105,9 @@ func _process(delta: float) -> void:
 		if key == "palette_shift":
 			enabled = Global.color_palette != "default" and not Global.use_primitives
 			if enabled and r.material:
+				var c := Global.palette_shift_color()
+				r.material.set_shader_parameter("tint_color", Vector3(c.r, c.g, c.b))
+				r.material.set_shader_parameter("strength", 0.82)
 				r.material.set_shader_parameter("hue_shift", Global.palette_hue() / 360.0)
 		# fog_cover only makes sense during gameplay (it covers the lower screen like an abyss).
 		if key == "fog_cover" and not in_level:

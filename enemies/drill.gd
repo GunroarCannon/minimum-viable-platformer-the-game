@@ -69,6 +69,14 @@ func _process(delta: float) -> void:
 			if global_position.y > death_y_limit:
 				_stop_engine()
 				queue_free()
+				return
+
+	# Continuous overlap kill: catches a drill that started overlapping the player
+	# while idle (body_entered only fires on the entering frame, so a drill that
+	# begins its drop already inside the player would otherwise pass through).
+	if player and is_instance_valid(player) and monitoring:
+		if not player.get("is_dead") and overlaps_body(player):
+			_hit_player(player)
 
 func _start_engine() -> void:
 	if not Global.is_unlocked("sfx"): return
@@ -97,20 +105,27 @@ func _on_body_entered(body: Node) -> void:
 			_stop_engine()
 			body.queue_free()
 		return
-	if state == "falling":
-		_stop_engine()
-		if body is BaseEnemy:
+	if body is BaseEnemy:
+		if state == "falling":
+			_stop_engine()
 			body.die_torn(Vector2(0, fall_speed))
-		elif body.has_method("die"):
-			body.die(false, "a drill", true)
-	elif state == "idle":
-		# Side contact while idle — player walks into drill tip.
-		if body.has_method("die") and not body.get("is_dead"):
-			# Only kill from the pointy bottom half, not landing on top.
-			if body is Node2D:
-				var bpos := (body as Node2D).global_position
-				if bpos.y > global_position.y - drill_size.y * 0.1:
-					body.die(false, "a drill", true)
+		return
+	# Player (or anything else with die()). A drill is pointy all over — any
+	# contact is lethal, whether it is idle or falling. The continuous poll in
+	# _process is the primary path; this just catches the entering frame early.
+	if body.has_method("die"):
+		if state == "falling":
+			_stop_engine()
+		_hit_player(body)
+
+## Kill the player unless they are mid-parry (invulnerable). Drills are NOT
+## stompable, so there is no stomp exemption.
+func _hit_player(body: Node) -> void:
+	if not body.has_method("die") or body.get("is_dead"):
+		return
+	if body.has_method("is_parry_invuln") and body.is_parry_invuln():
+		return
+	body.die(false, "a drill", true)
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not anim:

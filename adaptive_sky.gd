@@ -30,9 +30,13 @@ func _process(delta: float) -> void:
 	if sky_idx != _last_sky_idx:
 		Global.sky_color = SKY_CYCLE[sky_idx]
 		_last_sky_idx = sky_idx
-	if pal_idx != _last_pal_idx:
-		Global.color_palette = PAL_CYCLE[pal_idx]
-		_last_pal_idx = pal_idx
+	# Only drive the palette when the player has NOT chosen one themselves —
+	# otherwise the cycle (which starts on "default" at t=0) would wipe out the
+	# palette the player picked, making it look like palettes don't work in-game.
+	if _saved_palette == "default":
+		if pal_idx != _last_pal_idx:
+			Global.color_palette = PAL_CYCLE[pal_idx]
+			_last_pal_idx = pal_idx
 
 func _exit_tree() -> void:
 	# Restore player-chosen values when the level unloads so menus look normal.

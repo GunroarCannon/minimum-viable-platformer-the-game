@@ -1,10 +1,13 @@
 shader_type canvas_item;
 
-// Full-screen hue-rotate palette recolour. Samples the whole scene, rotates
-// every pixel's hue by `hue_shift` (0-1 == 0-360°), and writes it back. Driven
-// by screen_fx.gd from Global.palette_hue(); "default" palette pushes 0 so this
-// pass is a no-op even while visible.
+// Full-screen palette recolour. Unlike a plain hue-rotate (which leaves greys
+// and whites untouched because they have no hue), this maps EVERY pixel's
+// luminance into the active palette colour, so the whole screen visibly turns a
+// different colour. Driven by screen_fx.gd from Global.palette_shift_color();
+// the "default" palette sets strength 0 so this pass is a no-op.
 uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linear;
+uniform vec3 tint_color = vec3(1.0, 1.0, 1.0);
+uniform float strength : hint_range(0.0, 1.0) = 0.0;
 uniform float hue_shift : hint_range(0.0, 1.0) = 0.0;
 
 vec3 rgb2hsv(vec3 c) {
@@ -24,8 +27,18 @@ vec3 hsv2rgb(vec3 c) {
 
 void fragment() {
 	vec3 col = texture(screen_tex, SCREEN_UV).rgb;
+
+	// 1) Map luminance into the palette colour — recolours greys/whites too.
+	float luma = dot(col, vec3(0.299, 0.587, 0.114));
+	vec3 tinted = tint_color * (0.25 + luma * 1.15);
+
+	// 2) Rotate hue of already-coloured pixels so they shift as well.
 	vec3 hsv = rgb2hsv(col);
 	hsv.x = fract(hsv.x + hue_shift);
-	col = hsv2rgb(hsv);
+	vec3 rotated = hsv2rgb(hsv);
+
+	// Blend the two recolour paths, then cross-fade from the original by strength.
+	vec3 recolored = mix(rotated, tinted, 0.65);
+	col = mix(col, recolored, strength);
 	COLOR = vec4(col, 1.0);
 }

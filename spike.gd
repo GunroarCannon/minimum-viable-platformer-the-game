@@ -38,6 +38,12 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if Global.debug_toggles.get("show_collisions", false):
 		queue_redraw()
+	# Continuous overlap check so a body already inside us (or one we passed into)
+	# is still resolved — body_entered only fires on the entering frame.
+	if not monitoring:
+		return
+	for b in get_overlapping_bodies():
+		_resolve_body(b)
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not sprite or not sprite.texture:
@@ -54,7 +60,14 @@ func _draw() -> void:
 
 
 func _on_body_entered(body: Node2D) -> void:
+	_resolve_body(body)
+
+## Resolve one overlapping body. Idempotent so the continuous poll can call it
+## every frame safely. Spikes are NOT stompable — landing on them kills.
+func _resolve_body(body: Node2D) -> void:
 	if body is BaseEnemy:
+		if body.get("_is_dying"):
+			return
 		# Bullets are excluded – they fly, don't walk into spikes meaningfully.
 		if body.get_script() and body.get_script().resource_path.contains("bullet"):
 			return
@@ -62,6 +75,12 @@ func _on_body_entered(body: Node2D) -> void:
 			_spawn_spike_blood()
 		body.die_torn(body.velocity)
 	elif body.has_method("die"):
+		if body.get("is_dead"):
+			return
+		# A parried spike phases out (player is invulnerable mid-launch); an
+		# unparried one impales on ANY contact, including landing on top.
+		if body.has_method("is_parry_invuln") and body.is_parry_invuln():
+			return
 		_spawn_spike_blood()
 		body.die(false, "spikes", true)  # player – by_fall defaults false → tear death
 
