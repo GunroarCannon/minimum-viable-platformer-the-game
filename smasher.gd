@@ -18,6 +18,13 @@ var tex_angry = preload("res://assets/smasher_sharp/angry.png")
 var tex_hurt = preload("res://assets/smasher_sharp/hurt.png")
 var sprite: Sprite2D = null
 
+## The head (top) is a safe landing surface — only the bottom spikes crush.
+## A body whose centre sits within this fraction of the height below the top
+## edge counts as "standing on the head". Kept generous so a player settling
+## onto the top (or clipping the upper side) is reliably spared; still well
+## above the mid-body line so genuine crushes and side hits stay lethal.
+const SAFE_TOP_FRACTION := 0.3
+
 func _ready() -> void:
 	original_y = global_position.y
 	collision_layer = 2 # Detectable by spikes
@@ -141,10 +148,11 @@ func _draw() -> void:
 
 func _on_body_entered(body: Node2D) -> void:
 	# Landing on top of the smasher is safe (handled by one-way StaticBody2D).
-	# Check if the body's center is above the smasher top — if so, they're standing on it.
+	# Check if the body's center is near the smasher top — if so, they're standing
+	# on the head, which is never lethal (only the bottom spikes crush).
 	var body_center_y = body.global_position.y
 	var smasher_top_y = global_position.y - smasher_size.y / 2.0
-	if body_center_y < smasher_top_y + 20.0:
+	if body_center_y < smasher_top_y + smasher_size.y * SAFE_TOP_FRACTION:
 		return
 
 	if body is BaseEnemy:

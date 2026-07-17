@@ -13,6 +13,11 @@ var death_y_limit: float = 4000.0
 var anim: AnimatedSprite2D = null
 var _engine_player: AudioStreamPlayer = null
 
+## The drill's head (top body) is a safe landing surface — only the lower
+## pointed bit drills through things. A body whose centre sits within this
+## fraction of the height below the top edge counts as standing on the head.
+const SAFE_TOP_FRACTION := 0.3
+
 func _ready() -> void:
 	collision_layer = 0
 	collision_mask = 1 | 2 # Layer 1 (Tiles, Player), Layer 2 (Enemies)
@@ -22,6 +27,22 @@ func _ready() -> void:
 	var collision_shape = $CollisionShape2D
 	if collision_shape and collision_shape.shape is RectangleShape2D:
 		collision_shape.shape.size = drill_size
+
+	# One-way static platform across the head so the player/enemies can land and
+	# stand on top safely — only the pointed underside is lethal. Mirrors the
+	# smasher's top guard so both crushers behave the same when landed on.
+	var sb = StaticBody2D.new()
+	sb.collision_layer = 1 # Solid floor/wall layer
+	sb.collision_mask = 0
+	var sb_coll = CollisionShape2D.new()
+	var sb_rect = RectangleShape2D.new()
+	sb_rect.size = Vector2(drill_size.x * 0.8, 20)
+	sb_coll.shape = sb_rect
+	sb_coll.position = Vector2(0, -drill_size.y / 2 + 10)
+	sb_coll.one_way_collision = true
+	sb_coll.one_way_collision_margin = 16.0
+	sb.add_child(sb_coll)
+	add_child(sb)
 
 	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
@@ -118,14 +139,23 @@ func _on_body_entered(body: Node) -> void:
 			_stop_engine()
 		_hit_player(body)
 
-## Kill the player unless they are mid-parry (invulnerable). Drills are NOT
-## stompable, so there is no stomp exemption.
+## Kill the player unless they are mid-parry (invulnerable), or unless they are
+## standing on the drill's head (the top is a safe surface — only the pointed
+## underside drills). Drills are NOT stompable otherwise.
 func _hit_player(body: Node) -> void:
 	if not body.has_method("die") or body.get("is_dead"):
+		return
+	if _is_on_head(body):
 		return
 	if body.has_method("is_parry_invuln") and body.is_parry_invuln():
 		return
 	body.die(false, "a drill", true)
+
+## True if the body's centre is near the drill's top edge (standing on the head).
+func _is_on_head(body: Node) -> bool:
+	var body_center_y: float = body.global_position.y
+	var drill_top_y: float = global_position.y - drill_size.y / 2.0
+	return body_center_y < drill_top_y + drill_size.y * SAFE_TOP_FRACTION
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not anim:
