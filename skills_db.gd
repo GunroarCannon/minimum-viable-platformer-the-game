@@ -17,7 +17,7 @@ const ROOT_ID := "ui"
 # Edit PATH_COSTS to reshape the whole economy in one line.
 # Depths beyond the table use the last value * PATH_TAIL_MULT^extra.
 # A skill dict may set "cost_override" to pin a bespoke price.
-const PATH_COSTS := [1, 3, 9, 27, 81, 243]
+const PATH_COSTS := [1, 3, 9, 30, 91, 243]
 const PATH_TAIL_MULT := 3.0
 const COST_MAX  := 999
 
@@ -526,7 +526,7 @@ var SKILLS: Dictionary = {
 		"desc": "Frogs and kobolds start appearing in levels.\nRisk ↑, Reward ↑: earn +20% tokens every run.",
 		"cost": 1, "requires": ["ui"], "branch": "enemies",
 		"icon": "BE",
-		"priority": 90, "non_toggleable": true, "cost_override": 1,
+		"priority": 94, "non_toggleable": true, "cost_override": 1,
 	},
 	"enemy_sprites": {
 		"id": "enemy_sprites", "name": "Enemy Sprites",
@@ -540,14 +540,14 @@ var SKILLS: Dictionary = {
 		"desc": "Bats and big frogs join the party.\nRisk ↑↑, Reward ↑↑: another +20% token gain (40% total).",
 		"cost": 2, "requires": ["enemies_basic"], "branch": "enemies",
 		"icon": "ME",
-		"priority": 66, "cost_override": 2,
+		"priority": 90, "cost_override": 2,
 	},
 	"enemies_advanced": {
 		"id": "enemies_advanced", "name": "Adv. Enemies",
 		"desc": "Bombs, shooters, drills and jumpers.\n+20% token gain (60% total over base).",
 		"cost": 3, "requires": ["enemies_more"], "branch": "enemies",
 		"icon": "AE",
-		"priority": 52, "cost_override": 3,
+		"priority": 72, "cost_override": 3,
 	},
 	"smashers": {
 		"id": "smashers", "name": "Smashers",
@@ -556,13 +556,14 @@ var SKILLS: Dictionary = {
 		"icon": "SM",
 		"priority": 48, "cost_override": 2,
 	},
-	"enemy_drops": {
-		"id": "enemy_drops", "name": "Enemy Drops",
-		"desc": "Defeated enemies drop 0–5 coins that fly forward and upward — yours to collect!\nEnemies that ate coins on the level drop those back out too.",
-		"cost": 3, "requires": ["coins", "enemies_basic"], "branch": "enemies",
-		"icon": "ED",
-		"priority": 45,
-	},
+	#
+	#"enemy_drops": {
+		#"id": "enemy_drops", "name": "Enemy Drops",
+		#"desc": "Defeated enemies drop 0–5 coins that fly forward and upward — yours to collect!\nEnemies that ate coins on the level drop those back out too.",
+		#"cost": 3, "requires": ["coins", "enemies_basic"], "branch": "enemies",
+		#"icon": "ED",
+		#"priority": 45,
+	#},
 
 	# ═══════════════════════════════════════════════════════════════════
 	# LEVEL BRANCH  (far NE)
@@ -570,9 +571,9 @@ var SKILLS: Dictionary = {
 	"procgen": {
 		"id": "procgen", "name": "Full Procedural",
 		"desc": "Unlocks the full library of level templates: stairs, elevated platforms, combos.\nWithout this you only run on flat ground.",
-		"cost": 4, "requires": ["ui"], "branch": "level",
+		"cost_override": 1, "requires": ["ui"], "branch": "level",
 		"icon": "PG",
-		"priority": 92, "non_toggleable": true,
+		"priority": 192, "non_toggleable": true,
 	},
 	"coins": {
 		"id": "coins", "name": "Coins",
@@ -741,14 +742,14 @@ var SKILLS: Dictionary = {
 		"desc": "Bayer ordered dithering reduces the colour palette to a lo-fi retro look.\nLike running on an ancient handheld.",
 		"cost": 4, "requires": ["crt_filter"], "branch": "shaders",
 		"icon": "PD",
-		"priority": 22, "cost_override": 4,
+		"priority": 22, "cost_override": 20,
 	},
 	"neon_glow": {
 		"id": "neon_glow", "name": "Neon Glow",
 		"desc": "Bright game elements bleed a soft additive halo into surrounding pixels.\nGives everything a synthwave neon-lit feel.",
 		"cost": 4, "requires": ["chromatic_aberration"], "branch": "shaders",
 		"icon": "NG",
-		"priority": 20, "cost_override": 4,
+		"priority": 20, "cost_override": 20,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -766,7 +767,7 @@ var SKILLS: Dictionary = {
 		"desc": "Coins within 200 px are gently pulled toward the player.\nNo more watching coins drift past you into the void.",
 		"cost": 3, "requires": ["coins"], "branch": "level",
 		"icon": "CM",
-		"priority": 72,
+		"priority": 22,
 	},
 	"ghost_mode": {
 		"id": "ghost_mode", "name": "Ghost Mode",
@@ -774,13 +775,6 @@ var SKILLS: Dictionary = {
 		"cost": 5, "requires": ["double_jump"], "branch": "moves",
 		"icon": "GH",
 		"priority": 54,
-	},
-	"cursed_camera": {
-		"id": "cursed_camera", "name": "Cursed Camera",
-		"desc": "Taking a hit violently tilts the camera sideways for 0.4 s.\nDisorientating? Yes. Features? Also yes.",
-		"cost": 3, "requires": ["camera_shake"], "branch": "camera",
-		"icon": "CC",
-		"priority": 44,
 	},
 	"backflip_jumps": {
 		"id": "backflip_jumps", "name": "Backflips",

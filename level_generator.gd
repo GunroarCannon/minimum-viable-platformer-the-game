@@ -545,6 +545,7 @@ func generate_level() -> void:
 	var rng = RandomNumberGenerator.new()
 	# Before procgen is unlocked, force the same starter seed every run so the
 	# player can learn the layout. After unlock, either use a saved seed or roll.
+	
 	if not Global.is_unlocked("procgen"):
 		current_seed = STARTER_SEED
 		rng.seed = STARTER_SEED

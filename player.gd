@@ -1081,7 +1081,7 @@ func _execute_parry() -> void:
 		jumpCount = 1
 
 	# Combo spike + juice.
-	ComboSystem.notify_stomp(global_position, 3)
+	ComboSystem.notify_stomp(global_position, 1)
 	ScreenFX.kick_chromatic(0.024, 0.4)
 
 	# Was this a stomp-style parry (descending onto the enemy) or a side hit?
