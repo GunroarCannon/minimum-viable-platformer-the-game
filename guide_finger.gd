@@ -93,12 +93,25 @@ func allowed_rect() -> Rect2:
 func _reveal() -> void:
 	_sprite.visible = true
 	_ring.visible = true
+	# "Only the target is tappable" works by seeing _input before the scene does,
+	# and _input runs in reverse tree order — so the finger has to be the LAST
+	# child of root. It usually is (it is added last), but a host scene that adds
+	# an overlay after the finger appeared would quietly steal priority, so the
+	# position is re-asserted every time a new target is pointed at.
+	_claim_input_priority.call_deferred()
 	_update_placement()
 	_sprite.modulate.a = 0.0
 	_ring.modulate.a = 0.0
 	var tw := create_tween().set_parallel(true)
 	tw.tween_property(_sprite, "modulate:a", 1.0, 0.25)
 	tw.tween_property(_ring, "modulate:a", 1.0, 0.25)
+
+func _claim_input_priority() -> void:
+	if not is_inside_tree(): return
+	var root := get_tree().root
+	if get_parent() != root: return
+	if root.get_child(root.get_child_count() - 1) == self: return
+	root.move_child(self, -1)
 
 func _process(delta: float) -> void:
 	if not _has_target: return
@@ -138,31 +151,33 @@ func _update_placement() -> void:
 	_ring.scale = Vector2(pulse, pulse)
 	_ring_style.set_corner_radius_all(int(min(ring_rect.size.x, ring_rect.size.y) * 0.5))
 
+## Default-deny gate. While a target is up, the ONLY input that survives is a
+## press/drag landing inside the target's rect — everything else (other taps,
+## keys, gamepad buttons and sticks, gestures) is swallowed here before the scene
+## ever sees it, so a guided step has exactly one possible next action.
+## Mouse motion is the single deliberate exception: it cannot activate anything,
+## and consuming it would strand whatever control was last hovered in its hover
+## state, since Godot tracks mouse-over inside the GUI pass we would be skipping.
 func _input(event: InputEvent) -> void:
 	if not _gating or not _has_target:
 		return
 
+	if event is InputEventMouseMotion:
+		return  # hover feedback stays alive
+
 	var pos := Vector2.ZERO
-	var positional := false
 	if event is InputEventScreenTouch:
 		pos = event.position
-		positional = true
 	elif event is InputEventMouseButton:
 		pos = event.position
-		positional = true
 	elif event is InputEventScreenDrag:
 		pos = event.position
-		positional = true
-	elif event is InputEventMouseMotion:
-		return  # hover feedback stays alive
-	elif event is InputEventKey or event is InputEventJoypadButton:
+	else:
+		# Non-positional: keys, joypad buttons and axes, gestures, MIDI, actions.
+		# None of these can be aimed at the target, so none of them get through.
 		get_viewport().set_input_as_handled()
 		return
-	else:
-		return
 
-	if not positional:
-		return
 	if allowed_rect().has_point(pos):
 		if event is InputEventScreenTouch and event.pressed:
 			target_pressed.emit()

@@ -4,7 +4,6 @@ static var current_seed: int = 0
 
 var rng = RandomNumberGenerator.new()
 
-@export var level_width_blocks: int = 40
 @export var tile_scene: PackedScene = preload("res://tile_object.tscn")
 @export var tile_strip_scene: PackedScene = preload("res://tile_strip.tscn")
 @export var player_scene: PackedScene = preload("res://player.tscn")
@@ -42,7 +41,7 @@ const ENTITY_GATES := {
 	"drill":     "enemies_advanced",
 	"jumper":    "enemies_advanced",
 	"rock":      "enemies_advanced",
-	"smasher":   "smashers",
+	"smasher":   "enemies_advanced",
 }
 
 const TEMPLATE_STARTER_IDX := 0
@@ -246,6 +245,55 @@ var dirt_tex = preload("res://assets/dirt_floor.png")
 var top_dirt_tex = preload("res://assets/top_dirt_floor.png")
 var _max_y: float = 0.0
 
+# ─── ENDLESS STREAMING STATE ────────────────────────────────────────────
+# The level is no longer a fixed run of `level_width_blocks` sections. Blocks are
+# emitted one at a time, always in ascending index order off the single seeded
+# `rng`, so the Nth block a seed produces is the same block whether it was built
+# at load time or forty seconds into the run — seeds stay reproducible forever.
+# Blocks behind the player are freed; the sequence is never rewound, so nothing
+# is ever regenerated and the RNG never has to be replayed.
+
+## Blocks built up front, before the player moves.
+const PRIME_BLOCKS := 14
+## Keep generating while the built edge is less than this far ahead of the player.
+const GEN_AHEAD_PX := 4200.0
+## Free a block once its right edge is this far behind the player.
+const CULL_BEHIND_PX := 3000.0
+## Most blocks generated in a single frame, so a long teleport (or the first
+## post-spawn frame) can't stall on a hundred sections at once.
+const MAX_BLOCKS_PER_FRAME := 3
+
+## Rows the player can reliably gain in one jump. jumpMagnitude is 900 px/s with
+## a 900 px/s² rise, so the apex is ~450 px ≈ 3.5 tiles — but they also have to
+## land ON the ledge, so treat anything above 3 tiles as a wall.
+const MAX_CLIMB_TILES := 3
+## Longest run of ground that gets spiked when it dead-ends into such a wall.
+const POCKET_SPIKE_MAX := 10
+
+## One entry per live block: { "parent": Node2D, "end_x": float }.
+var _blocks: Array = []
+## Cursor state carried between blocks so streaming picks up exactly where the
+## previous section left off.
+var _next_x: int = 0
+var _next_y: int = 0
+var _block_index: int = 0
+var _prev_type: String = "horizontal"
+var _prev_allow_next: Array = ["any"]
+var _active_indices: Array = []
+## Strips from the most recent block, kept so the next block can be outline-linked
+## across the seam without re-walking every strip in the world.
+var _seam_strips: Array = []
+## grid_x -> grid row of the topmost solid tile in that column. Used to spike
+## pockets the auto-runner cannot climb out of. Trimmed along with the blocks.
+var _floor_profile: Dictionary = {}
+var _profile_min_x: int = 0
+## Columns that already carry a pocket spike, so overlapping traps don't stack.
+var _spiked_cols: Dictionary = {}
+## Node the current block's content is parented to, so culling is one queue_free.
+var _chunk_parent: Node2D = null
+var _streaming: bool = false
+var _cam: Camera2D = null
+
 func _ready() -> void:
 	# Reset the per-run distance counter so token awards stay correct.
 	Global.last_run_distance = 0
@@ -266,6 +314,15 @@ func _ready() -> void:
 			get_tree().root.add_child(cut)
 			cut.play(scene.get("blocks", []), String(scene.get("mode", "black")))
 			StoryDB.mark_seen(scene)
+
+
+## Parent block content under the current chunk node so culling a section is a
+## single queue_free. Falls back to the generator itself outside generation.
+func _attach(n: Node) -> void:
+	if _chunk_parent != null and is_instance_valid(_chunk_parent):
+		_chunk_parent.add_child(n)
+	else:
+		add_child(n)
 
 
 # ─── COIN PATTERNED PLACEMENT ───────────────────────────────────────────
@@ -291,7 +348,7 @@ func _place_coin(tx: int, ty: int, next_x: int, y_offset: int) -> void:
 		(next_x + tx) * tile_size.x + tile_size.x * 0.5,
 		(y_offset + ty) * tile_size.y + tile_size.y * 0.5
 	)
-	add_child(cp)
+	_attach(cp)
 
 ## Coin pattern constants — tune these to adjust feel.
 const COIN_ARC_HEIGHT    := 2.5   # rows of clearance at the peak of an arc
@@ -394,7 +451,7 @@ func _spawn_entity(id: String, world_pos: Vector2) -> void:
 		"jumper":   inst = jumper_scene.instantiate()
 	if inst:
 		inst.position = world_pos
-		add_child(inst)
+		_attach(inst)
 		inst.add_to_group("hazards")
 
 
@@ -409,7 +466,7 @@ func _spawn_strip(start_world: Vector2, length_tiles: int, is_elevated: bool = f
 	strip.position = start_world - Vector2(tile_size.x * 0.5, tile_size.y * 0.5)
 	if is_elevated:
 		strip.no_foliage = true
-	add_child(strip)
+	_attach(strip)
 	return strip
 
 ## After all strips are placed, find horizontally-adjacent strips at the same Y and
@@ -417,7 +474,7 @@ func _spawn_strip(start_world: Vector2, length_tiles: int, is_elevated: bool = f
 func _link_strip_neighbors(strips: Array) -> void:
 	var by_y: Dictionary = {}
 	for strip in strips:
-		if strip == null: continue
+		if strip == null or not is_instance_valid(strip): continue
 		var y_key: int = roundi(strip.position.y)
 		if not by_y.has(y_key):
 			by_y[y_key] = []
@@ -438,7 +495,7 @@ func _link_strip_neighbors(strips: Array) -> void:
 func _spawn_spike(world_pos: Vector2) -> void:
 	var spike = spike_scene.instantiate()
 	spike.position = world_pos
-	add_child(spike)
+	_attach(spike)
 	spike.add_to_group("hazards")
 
 
@@ -550,10 +607,9 @@ const STARTER_SEED := 5
 const SEED_MAX := 923521
 
 func generate_level() -> void:
-	var rng = RandomNumberGenerator.new()
 	# Before procgen is unlocked, force the same starter seed every run so the
 	# player can learn the layout. After unlock, either use a saved seed or roll.
-	
+
 	if not Global.is_unlocked("procgen"):
 		current_seed = STARTER_SEED
 		rng.seed = STARTER_SEED
@@ -565,7 +621,6 @@ func generate_level() -> void:
 		rng.seed = current_seed
 
 	# Store seed so the library and UI can reference it.
-	print(current_seed)
 	Global.current_run_seed = current_seed
 	Global.stat_bucket("seeds_visited", str(current_seed), 1)
 	Global.reset_run_state()
@@ -604,172 +659,336 @@ func generate_level() -> void:
 	var ui_instance = ui_scene.instantiate()
 	add_child(ui_instance)
 
-	var active_indices := _build_active_template_indices()
+	_active_indices = _build_active_template_indices()
+	_next_x = 0
+	_next_y = 0
+	_block_index = 0
+	_prev_type = "horizontal"
+	_prev_allow_next = ["any"]
+	_max_y = -99999.0
 
-	var next_x := 0
-	var next_y := 0
-	var spawn_pos := Vector2.ZERO
-	var lowest_y := -99999.0
-	var all_strips: Array = []
-
-	# Section-type chaining state. Block 0 is the flat safe start.
-	var prev_type := "horizontal"
-	var prev_allow_next: Array = ["any"]
-
-	for i in range(level_width_blocks):
-		var tmpl_idx: int
-		if i == 0:
-			tmpl_idx = TEMPLATE_STARTER_IDX
-		else:
-			var candidates := _chainable_indices(active_indices, prev_type, prev_allow_next)
-			tmpl_idx = candidates[rng.randi() % candidates.size()]
-		var tmpl: Dictionary = TEMPLATES[tmpl_idx]
-
-		# Remember this section's type + hand-off rule for the next iteration.
-		prev_type = _tmpl_type(tmpl)
-		prev_allow_next = _tmpl_allow_next(tmpl)
-
-		var pattern: Array = tmpl["pattern"]
-		var block_w: int = pattern[0].length()
-		var block_h: int = pattern.size()
-
-		# Find left edge solid row (for y-alignment with previous block)
-		var left_solid_y := 0
-		for y in range(block_h):
-			var ch = pattern[y][0]
-			if ch == '#' or ch == 's':
-				left_solid_y = y
-				break
-		var y_offset := next_y - left_solid_y
-
-		# ── 1) Spawn floor strips: group contiguous runs of '#' along each row.
-		#         '#' creates a 3-deep strip starting at the same row.
-		#         's' (spike) creates the spike sprite at that row and a
-		#         1-wide strip ONE ROW LOWER, exactly matching the original
-		#         per-tile spawn semantics (spike rests on top of its tile).
-		for ty in range(block_h):
-			var grid_y := y_offset + ty
-			var row: String = pattern[ty]
-			var rx := 0
-			while rx < block_w:
-				var ch_here: String = row[rx]
-				if ch_here == '#':
-					var run_start := rx
-					while rx < block_w and row[rx] == '#':
-						rx += 1
-					var run_len := rx - run_start
-					var world_start := Vector2(
-						(next_x + run_start) * tile_size.x + tile_size.x * 0.5,
-						grid_y * tile_size.y + tile_size.y * 0.5
-					)
-					# Suppress foliage on anything that isn't the block's true
-					# ground row. Two triggers:
-					#   1) Row directly below has empty space under the run
-					#      (traditional floating platform).
-					#   2) A deeper row in the block contains a '#' — meaning
-					#      this strip is a stair step or upper tier, not the
-					#      ground the sky sits against. Foliage tufts on those
-					#      poke up into the sky and read as "grass on the sky".
-					var is_elevated := false
-					if ty + 1 < block_h:
-						var next_row_str: String = pattern[ty + 1]
-						for xx in range(run_start, rx):
-							var nc: String = next_row_str[xx]
-							if nc == '.' or nc == ' ' or nc == 'a':
-								is_elevated = true
-								break
-					if not is_elevated:
-						for deeper_ty in range(ty + 1, block_h):
-							if pattern[deeper_ty].find('#') != -1:
-								is_elevated = true
-								break
-					all_strips.append(_spawn_strip(world_start, run_len, is_elevated))
-					var strip_bottom := world_start.y + (3 * tile_size.y)
-					if strip_bottom > lowest_y: lowest_y = strip_bottom
-				elif ch_here == 's':
-					# Lift the spike a few pixels so its base sits clearly above
-					# the wavy grass band instead of being clipped by it.
-					var spike_world := Vector2(
-						(next_x + rx) * tile_size.x + tile_size.x * 0.5,
-						grid_y * tile_size.y + tile_size.y * 0.5 - 14.0
-					)
-					_spawn_spike(spike_world)
-					var strip_world := Vector2(
-						spike_world.x,
-						grid_y * tile_size.y + tile_size.y * 0.5 + tile_size.y
-					)
-					all_strips.append(_spawn_strip(strip_world, 1))
-					var sb := strip_world.y + (3 * tile_size.y)
-					if sb > lowest_y: lowest_y = sb
-					rx += 1
-				else:
-					rx += 1
-
-		# ── 1b) Patterned coin placement. Coins follow arcs, lines, or clusters
-		#         rather than being scattered at a flat random rate.
-		if Global.is_unlocked("coins") and i > 0:
-			_spawn_coins_patterned(pattern, block_w, block_h, next_x, y_offset)
-
-		# ── 2) Spawn non-tile entities (ramps + enemies)
-		for ty in range(block_h):
-			var grid_y2 := y_offset + ty
-			var row2: String = pattern[ty]
-			for tx in range(block_w):
-				var ch: String = row2[tx]
-				var grid_x := next_x + tx
-				var world_pos := Vector2(
-					grid_x * tile_size.x + tile_size.x * 0.5,
-					grid_y2 * tile_size.y + tile_size.y * 0.5
-				)
-				if ch == '/' or ch == '\\':
-					# Ramps removed from the game — skip.
-					continue
-				elif ch in ['.', ' ', 'a', '#', 's']:
-					pass
-				elif tmpl.has(ch):
-					var entity_id: String = tmpl[ch]
-					var spawn_world := world_pos
-					# Shooters must sit on top of the ground — snap their Y to
-					# the row immediately above the nearest '#' or 's' below.
-					if entity_id == "shooter":
-						var floor_grid_y := -1
-						for yy in range(ty + 1, block_h):
-							var rrow: String = pattern[yy]
-							if ("#" in rrow) or ("s" in rrow):
-								floor_grid_y = y_offset + yy
-								break
-						if floor_grid_y != -1:
-							# Snap bottom of shooter sprite to top of floor collision.
-							# Shooter rect spans -64..+64 from its position, so subtract
-							# one full tile height to seat it on the surface.
-							spawn_world.y = floor_grid_y * tile_size.y - tile_size.y
-					_spawn_entity(entity_id, spawn_world)
-
-		if i == 0:
-			spawn_pos = Vector2(next_x * tile_size.x + tile_size.x * 2.0, next_y * tile_size.y - 55)
-
-		next_x += block_w
-
-		# Find right-edge solid row to align next block's Y
-		var right_solid_y := -1
-		for y in range(block_h):
-			var ch = pattern[y][block_w - 1]
-			if ch == '#' or ch == 's':
-				right_solid_y = y
-				break
-		if right_solid_y != -1:
-			next_y = y_offset + right_solid_y
-
-	_link_strip_neighbors(all_strips)
+	# Block 0 is the flat safe start; the player is placed on it.
+	var spawn_pos := _emit_block()
+	for _i in range(PRIME_BLOCKS - 1):
+		_emit_block()
 
 	var p = player_scene.instantiate()
 	spawn_pos.y -= 100
 	p.position = spawn_pos
 	p.set("game_over_ui", ui_instance)
-	p.set("death_y_limit", lowest_y + tile_size.y * 2)
+	p.set("death_y_limit", _max_y + tile_size.y * 2)
 	add_child(p)
 	player = p
-	_max_y = lowest_y
+	_streaming = true
+
+
+## Build the next section in the sequence and advance the cursor.
+## Returns the block's player spawn point (only meaningful for block 0).
+func _emit_block() -> Vector2:
+	var i := _block_index
+	_block_index += 1
+
+	var tmpl_idx: int
+	if i == 0:
+		tmpl_idx = TEMPLATE_STARTER_IDX
+	else:
+		var candidates := _chainable_indices(_active_indices, _prev_type, _prev_allow_next)
+		tmpl_idx = candidates[rng.randi() % candidates.size()]
+	var tmpl: Dictionary = TEMPLATES[tmpl_idx]
+
+	# Remember this section's type + hand-off rule for the next block.
+	_prev_type = _tmpl_type(tmpl)
+	_prev_allow_next = _tmpl_allow_next(tmpl)
+
+	var pattern: Array = tmpl["pattern"]
+	var block_w: int = pattern[0].length()
+	var block_h: int = pattern.size()
+	var next_x := _next_x
+
+	# Everything this block spawns hangs off one node so culling is a single free.
+	_chunk_parent = Node2D.new()
+	add_child(_chunk_parent)
+
+	# Align the block's left edge with where the previous one handed off.
+	var y_offset := _next_y - _entry_row(pattern, block_h)
+
+	var all_strips: Array = []
+	var spawn_pos := Vector2.ZERO
+
+	# ── 1) Spawn floor strips: group contiguous runs of '#' along each row.
+	#         '#' creates a 3-deep strip starting at the same row.
+	#         's' (spike) creates the spike sprite at that row and a
+	#         1-wide strip ONE ROW LOWER, exactly matching the original
+	#         per-tile spawn semantics (spike rests on top of its tile).
+	for ty in range(block_h):
+		var grid_y := y_offset + ty
+		var row: String = pattern[ty]
+		var rx := 0
+		while rx < block_w:
+			var ch_here: String = row[rx]
+			if ch_here == '#':
+				var run_start := rx
+				while rx < block_w and row[rx] == '#':
+					rx += 1
+				var run_len := rx - run_start
+				var world_start := Vector2(
+					(next_x + run_start) * tile_size.x + tile_size.x * 0.5,
+					grid_y * tile_size.y + tile_size.y * 0.5
+				)
+				# Suppress foliage on anything that isn't the block's true
+				# ground row. Two triggers:
+				#   1) Row directly below has empty space under the run
+				#      (traditional floating platform).
+				#   2) A deeper row in the block contains a '#' — meaning
+				#      this strip is a stair step or upper tier, not the
+				#      ground the sky sits against. Foliage tufts on those
+				#      poke up into the sky and read as "grass on the sky".
+				var is_elevated := false
+				if ty + 1 < block_h:
+					var next_row_str: String = pattern[ty + 1]
+					for xx in range(run_start, rx):
+						var nc: String = next_row_str[xx]
+						if nc == '.' or nc == ' ' or nc == 'a':
+							is_elevated = true
+							break
+				if not is_elevated:
+					for deeper_ty in range(ty + 1, block_h):
+						if pattern[deeper_ty].find('#') != -1:
+							is_elevated = true
+							break
+				all_strips.append(_spawn_strip(world_start, run_len, is_elevated))
+				var strip_bottom := world_start.y + (3 * tile_size.y)
+				if strip_bottom > _max_y: _max_y = strip_bottom
+			elif ch_here == 's':
+				# Lift the spike a few pixels so its base sits clearly above
+				# the wavy grass band instead of being clipped by it.
+				var spike_world := Vector2(
+					(next_x + rx) * tile_size.x + tile_size.x * 0.5,
+					grid_y * tile_size.y + tile_size.y * 0.5 - 14.0
+				)
+				_spawn_spike(spike_world)
+				var strip_world := Vector2(
+					spike_world.x,
+					grid_y * tile_size.y + tile_size.y * 0.5 + tile_size.y
+				)
+				all_strips.append(_spawn_strip(strip_world, 1))
+				var sb := strip_world.y + (3 * tile_size.y)
+				if sb > _max_y: _max_y = sb
+				rx += 1
+			else:
+				rx += 1
+
+	# ── 1b) Patterned coin placement. Coins follow arcs, lines, or clusters
+	#         rather than being scattered at a flat random rate.
+	if Global.is_unlocked("coins") and i > 0:
+		_spawn_coins_patterned(pattern, block_w, block_h, next_x, y_offset)
+
+	# ── 2) Spawn non-tile entities (ramps + enemies)
+	for ty in range(block_h):
+		var grid_y2 := y_offset + ty
+		var row2: String = pattern[ty]
+		for tx in range(block_w):
+			var ch: String = row2[tx]
+			var grid_x := next_x + tx
+			var world_pos := Vector2(
+				grid_x * tile_size.x + tile_size.x * 0.5,
+				grid_y2 * tile_size.y + tile_size.y * 0.5
+			)
+			if ch == '/' or ch == '\\':
+				# Ramps removed from the game — skip.
+				continue
+			elif ch in ['.', ' ', 'a', '#', 's']:
+				pass
+			elif tmpl.has(ch):
+				var entity_id: String = tmpl[ch]
+				var spawn_world := world_pos
+				# Shooters must sit on top of the ground — snap their Y to
+				# the row immediately above the nearest '#' or 's' below.
+				if entity_id == "shooter":
+					var floor_grid_y := -1
+					for yy in range(ty + 1, block_h):
+						var rrow: String = pattern[yy]
+						if ("#" in rrow) or ("s" in rrow):
+							floor_grid_y = y_offset + yy
+							break
+					if floor_grid_y != -1:
+						# Snap bottom of shooter sprite to top of floor collision.
+						# Shooter rect spans -64..+64 from its position, so subtract
+						# one full tile height to seat it on the surface.
+						spawn_world.y = floor_grid_y * tile_size.y - tile_size.y
+				_spawn_entity(entity_id, spawn_world)
+
+	if i == 0:
+		spawn_pos = Vector2(next_x * tile_size.x + tile_size.x * 2.0, _next_y * tile_size.y - 55)
+
+	# Record this block's surface heights (patching any unreachable edge column),
+	# then spike any pocket the player would auto-run into and be unable to climb
+	# back out of.
+	all_strips.append_array(_record_floor_profile(pattern, block_w, block_h, next_x, y_offset))
+	_seal_unclimbable_pockets(next_x, next_x + block_w)
+
+	# Outline-link within the block and across the seam with the previous one.
+	_link_strip_neighbors(_seam_strips + all_strips)
+	_seam_strips = all_strips
+
+	_blocks.append({
+		"parent": _chunk_parent,
+		"end_x": float(next_x + block_w) * tile_size.x,
+	})
+	_chunk_parent = null
+
+	_next_x += block_w
+	_next_y = y_offset + _exit_row(pattern, block_h, block_w)
+	return spawn_pos
+
+
+# ─── SECTION EDGE ALIGNMENT ─────────────────────────────────────────────
+# The grid row a block hands off at. Normally this is the TOPMOST solid cell in
+# the edge column, because the player walks onto the top of whatever is there.
+# When the edge column is empty in every row (templates like ".######." whose
+# ground row does not reach the block border) there is no such cell, and the old
+# code silently used row 0 on entry / left `next_y` untouched on exit. Both
+# mistakes offset the following section by the block's full height, which is
+# what produced the "last platform is too high, player is stuck" sections.
+# Falling back to the block's own ground row keeps the two floors level.
+
+## Bottom-most row of the pattern containing any solid cell.
+func _ground_row(pattern: Array, block_h: int) -> int:
+	for y in range(block_h - 1, -1, -1):
+		var row: String = pattern[y]
+		if ("#" in row) or ("s" in row):
+			return y
+	return block_h - 1
+
+func _entry_row(pattern: Array, block_h: int) -> int:
+	for y in range(block_h):
+		var ch: String = pattern[y][0]
+		if ch == '#' or ch == 's':
+			return y
+	return _ground_row(pattern, block_h)
+
+func _exit_row(pattern: Array, block_h: int, block_w: int) -> int:
+	for y in range(block_h):
+		var ch: String = pattern[y][block_w - 1]
+		if ch == '#' or ch == 's':
+			return y
+	return _ground_row(pattern, block_h)
+
+
+# ─── STUCK-POCKET SPIKES ────────────────────────────────────────────────
+# The player auto-runs right and cannot backtrack, so a floor that dead-ends
+# into a wall taller than a jump is a soft-lock: nothing kills them, they just
+# stand there. Any such pocket gets a bed of spikes so the run ends cleanly
+# instead of hanging.
+
+## Store the topmost solid row for every column this block occupies.
+##
+## A column with nothing solid in it is one of two very different things:
+##   • an 'a' (abyss) column — a designed pit; falling in is a death and the
+##     column is deliberately left out of the profile.
+##   • an EDGE column that the template's ground row simply doesn't reach
+##     (patterns like ".######."). Those are accidents of the artwork, and they
+##     are what broke section stitching: with no solid cell to align against,
+##     the neighbouring section was placed a whole block-height out. The edge is
+##     bridged with a one-tile strip at the block's own ground row so seams stay
+##     flush and the player never drops into a slot between two sections.
+## Returns any bridge strips created, for outline linking.
+func _record_floor_profile(pattern: Array, block_w: int, block_h: int,
+		next_x: int, y_offset: int) -> Array:
+	var bridges: Array = []
+	var ground := _ground_row(pattern, block_h)
+	for tx in block_w:
+		var top := -1
+		for ty in range(block_h):
+			var ch: String = pattern[ty][tx]
+			if ch == '#' or ch == 's':
+				top = ty
+				break
+		if top == -1:
+			var is_edge: bool = (tx == 0 or tx == block_w - 1)
+			var has_abyss := false
+			for ay in range(block_h):
+				if pattern[ay][tx] == 'a':
+					has_abyss = true
+					break
+			if not is_edge or has_abyss:
+				continue
+			top = ground
+			var world_start := Vector2(
+				(next_x + tx) * tile_size.x + tile_size.x * 0.5,
+				(y_offset + top) * tile_size.y + tile_size.y * 0.5
+			)
+			bridges.append(_spawn_strip(world_start, 1))
+			var bb := world_start.y + (3 * tile_size.y)
+			if bb > _max_y: _max_y = bb
+		_floor_profile[next_x + tx] = y_offset + top
+	return bridges
+
+## Walk the freshly-placed columns (plus one of overlap with the previous block,
+## so seams are covered) and spike the flat run leading into any wall higher than
+## MAX_CLIMB_TILES.
+func _seal_unclimbable_pockets(from_x: int, to_x: int) -> void:
+	for gx in range(max(_profile_min_x, from_x - 1), to_x):
+		if not _floor_profile.has(gx) or not _floor_profile.has(gx + 1):
+			continue
+		var here: int = _floor_profile[gx]
+		var ahead: int = _floor_profile[gx + 1]
+		# Smaller row = higher up. A positive climb bigger than the jump arc is
+		# a wall the auto-runner can never clear.
+		if here - ahead <= MAX_CLIMB_TILES:
+			continue
+		# Spike back along the contiguous run of ground at this same low level —
+		# that flat stretch is the whole trap. Capped so a long approach doesn't
+		# get carpeted; the player runs into the first few regardless.
+		var bx := gx
+		var placed := 0
+		while bx >= _profile_min_x and placed < POCKET_SPIKE_MAX \
+				and _floor_profile.get(bx, -99999) == here:
+			if not _spiked_cols.has(bx):
+				_spiked_cols[bx] = true
+				_spike_surface(bx, here)
+			bx -= 1
+			placed += 1
+
+## Drop a spike standing on top of the tile at (grid_x, floor_grid_y).
+func _spike_surface(grid_x: int, floor_grid_y: int) -> void:
+	_spawn_spike(Vector2(
+		grid_x * tile_size.x + tile_size.x * 0.5,
+		(floor_grid_y - 1) * tile_size.y + tile_size.y * 0.5 - 14.0
+	))
+
+
+# ─── STREAMING ──────────────────────────────────────────────────────────
+
+func _process(_delta: float) -> void:
+	if not _streaming: return
+	if player == null or not is_instance_valid(player):
+		return
+	var px: float = player.global_position.x
+	var built := 0
+	while float(_next_x) * tile_size.x - px < GEN_AHEAD_PX and built < MAX_BLOCKS_PER_FRAME:
+		_emit_block()
+		built += 1
+	if built > 0 and _cam != null and is_instance_valid(_cam):
+		_cam.limit_bottom = int(_max_y + tile_size.y * 1.5)
+	_cull_behind(px)
+
+## Free sections the player has left behind. This is what keeps the node count —
+## and player.gd's per-column scan over the `solid_tiles` group — bounded no
+## matter how far the run goes.
+func _cull_behind(px: float) -> void:
+	while not _blocks.is_empty() and float(_blocks[0]["end_x"]) < px - CULL_BEHIND_PX:
+		var b: Dictionary = _blocks.pop_front()
+		var parent = b["parent"]
+		if parent != null and is_instance_valid(parent):
+			parent.queue_free()
+	# Trim the floor profile to match, so the pocket scan can't walk into
+	# columns whose geometry no longer exists.
+	if _blocks.is_empty(): return
+	var keep_from := int(float(_blocks[0]["end_x"]) / tile_size.x) - 64
+	while _profile_min_x < keep_from:
+		_floor_profile.erase(_profile_min_x)
+		_profile_min_x += 1
 
 
 # ─── CAMERA ─────────────────────────────────────────────────────────────
@@ -780,6 +999,7 @@ func setup_camera() -> void:
 	cam.make_current()
 	cam.position = Vector2.ZERO
 	player.add_child(cam)
+	_cam = cam
 
 	cam.limit_left = 0
 	cam.limit_top = -10000000

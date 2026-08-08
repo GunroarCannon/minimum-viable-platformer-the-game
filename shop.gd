@@ -249,7 +249,12 @@ func _refresh_detail() -> void:
 		if _d_toggle: _d_toggle.visible = false
 		if _d_toggle_hint: _d_toggle_hint.visible = false
 		
-		# Jiggle tween to draw attention
+		# Jiggle tween to draw attention — but not while a guide owns the screen.
+		# The finger is already pointing at whatever the player should press, and a
+		# second thing waving for a tap just muddies that.
+		if Onboarding.suppresses_juice():
+			d_buy.rotation = 0.0
+			return
 		d_buy.pivot_offset = d_buy.size * 0.5
 		var tw = create_tween()
 		tw.tween_property(d_buy, "rotation", 0.1, 0.05)

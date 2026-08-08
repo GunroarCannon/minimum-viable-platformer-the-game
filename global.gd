@@ -38,6 +38,8 @@ extends Node
 	"unlock_all": false,
 }
 
+var player : Node2D;
+
 # ─── META-PROGRESSION ──────────────────────────────────────────────────
 ## Currency the player earns from running.
 var tokens: int = 0
@@ -60,6 +62,12 @@ var story_seen: Dictionary = {}
 
 ## Position in the forced first-run guide. See onboarding.gd for the values.
 var onboard_step: String = ""
+
+## True once a death has armed the second guide (the polish pass that walks the
+## player to Squash & Stretch / Player Sprite / Menu Polish). Set by
+## Onboarding.arm_phase2() and cleared once the whole chain is owned, so the
+## guide survives the level → menu → shop scene changes it has to cross.
+var onboard2_armed: bool = false
 
 ## Unix time this save was last written, and how many real days passed between
 ## the previous session and this one. StoryDB's days_away_at_least reads the gap.
@@ -242,17 +250,47 @@ func _ready() -> void:
 	print("[Global] _ready() complete | tokens=", tokens, " unlocked=", unlocked)
 
 var _playtime_save_accum: float = 0.0
+## Coalesced-save state. See save_state_deferred().
+var _save_dirty: bool = false
+var _save_dirty_accum: float = 0.0
+const SAVE_DEBOUNCE := 0.6
+
 func _process(delta: float) -> void:
 	stats["playtime_sec"] = float(stats.get("playtime_sec", 0.0)) + delta
 	_playtime_save_accum += delta
 	if _playtime_save_accum > 30.0:
 		_playtime_save_accum = 0.0
 		save_state()
+	if _save_dirty:
+		_save_dirty_accum += delta
+		if _save_dirty_accum >= SAVE_DEBOUNCE:
+			save_state()
+
+func _notification(what: int) -> void:
+	# Never let a debounced save die with the app.
+	match what:
+		NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_PAUSED, \
+		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_EXIT_TREE:
+			flush_save()
 
 
 ## ─── PERSISTENCE ────────────────────────────────────────────────────────
 
+## Mark the save dirty instead of writing now. A full store_var costs a
+## disk round-trip, and coin pickups can fire many times per second — writing
+## per pickup is what made a coin-heavy run stutter. The pending write lands
+## within SAVE_DEBOUNCE, on app pause/close, or on any explicit save_state().
+func save_state_deferred() -> void:
+	_save_dirty = true
+
+## Write immediately if anything is pending. Cheap when nothing is dirty.
+func flush_save() -> void:
+	if _save_dirty:
+		save_state()
+
 func save_state() -> void:
+	_save_dirty = false
+	_save_dirty_accum = 0.0
 	var f = FileAccess.open(META_SAVE_PATH, FileAccess.WRITE)
 	if not f: return
 	var blob = {
@@ -270,6 +308,7 @@ func save_state() -> void:
 		"stats": stats,
 		"story_seen": story_seen,
 		"onboard_step": onboard_step,
+		"onboard2_armed": onboard2_armed,
 		"last_played_unix": int(Time.get_unix_time_from_system()),
 	}
 	f.store_var(blob)
@@ -300,6 +339,7 @@ func load_state() -> void:
 			stats[k] = stored_stats[k]
 	story_seen = blob.get("story_seen", {})
 	onboard_step = String(blob.get("onboard_step", ""))
+	onboard2_armed = bool(blob.get("onboard2_armed", false))
 	# Gap since the previous session, measured before we stamp "now".
 	var now := int(Time.get_unix_time_from_system())
 	var prev := int(blob.get("last_played_unix", 0))
@@ -391,7 +431,7 @@ func add_tokens(n: int) -> void:
 	run_tokens_gained += earned
 	stat_add("total_points_earned", earned)
 	add_run_score(earned)
-	save_state()
+	save_state_deferred()
 
 ## Credit exactly `n` tokens with no combo/enemy multipliers applied. Coins use
 ## this so one coin is always worth exactly its face value (1), keeping the
@@ -402,7 +442,9 @@ func add_tokens_flat(n: int) -> void:
 	run_tokens_gained += n
 	stat_add("total_points_earned", n)
 	add_run_score(n)
-	save_state()
+	# Debounced — a run can collect dozens of coins a second and each one used
+	# to force a full save blob to disk.
+	save_state_deferred()
 
 ## Adds to the current-run score. Called by ComboSystem when tokens are earned
 ## and by stomp-bonus paths. Does not persist until run-end.
@@ -436,6 +478,7 @@ func reset_progress() -> void:
 	tutorial_seen = false
 	story_seen = {}
 	onboard_step = ""
+	onboard2_armed = false
 	best_distance = 0
 	level_library = []
 	color_palette = "default"

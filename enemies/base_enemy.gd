@@ -51,11 +51,12 @@ func _ready() -> void:
 
 func _find_player() -> void:
 	if player: return
-	var p = get_parent().get_node_or_null("Player")
+	var p = Global.player;#().get_node_or_null("Player")
 	if p: player = p
 
 func _physics_process(delta: float) -> void:
-	if _is_dying: return
+	if _is_dying:
+		return
 	_find_player()
 	velocity.y += 980 * gravity_scale * delta
 	_custom_process(delta)

@@ -495,7 +495,7 @@ var SKILLS: Dictionary = {
 		"desc": "Idle, run, jump and hurt animations play for the player.",
 		"cost": 3, "requires": ["player_sprite"], "branch": "graphics",
 		"icon": "SA",
-		"priority": 58,
+		"priority": 88,
 	},
 	"outline": {
 		"id": "outline", "name": "Sprite Outline",
@@ -541,7 +541,7 @@ var SKILLS: Dictionary = {
 		"desc": "Enemies, spikes and smashers get their proper sprite art.",
 		"cost": 2, "requires": ["enemies_basic"], "branch": "enemies",
 		"icon": "ES",
-		"priority": 60, "cost_override": 2,
+		"priority": 99, "cost_override": 2,
 	},
 	"enemies_more": {
 		"id": "enemies_more", "name": "More Enemies",
@@ -555,15 +555,15 @@ var SKILLS: Dictionary = {
 		"desc": "Bombs, shooters, drills and jumpers.\n+20% token gain (60% total over base).",
 		"cost": 3, "requires": ["enemies_more"], "branch": "enemies",
 		"icon": "AE",
-		"priority": 72, "cost_override": 3,
+		"priority": 92, "cost_override": 3,
 	},
-	"smashers": {
-		"id": "smashers", "name": "Smashers",
-		"desc": "Ceiling hammers that drop when you walk under them.\n+20% token gain (80% total over base). Max enemy bonus.",
-		"cost": 2, "requires": ["enemies_more"], "branch": "enemies",
-		"icon": "SM",
-		"priority": 48, "cost_override": 2,
-	},
+	#"smashers": {
+		#"id": "smashers", "name": "Smashers",
+		#"desc": "Ceiling hammers that drop when you walk under them.\n+20% token gain (80% total over base). Max enemy bonus.",
+		#"cost": 2, "requires": ["enemies_more"], "branch": "enemies",
+		#"icon": "SM",
+		#"priority": 48, "cost_override": 2,
+	#},
 	#
 	#"enemy_drops": {
 		#"id": "enemy_drops", "name": "Enemy Drops",
@@ -607,7 +607,7 @@ var SKILLS: Dictionary = {
 	"level_library": {
 		"id": "level_library", "name": "Level Library",
 		"desc": "Each run's seed is saved so you can replay favourites.\nUnlocks the Level Library in the main menu.\nFavourite levels are never evicted. Best distances are tracked per seed.",
-		"cost": 5, "requires": ["coins"], "branch": "level",
+		"cost": 5, "requires": ["stats_menu"], "branch": "ui",
 		"icon": "LL",
 		"priority": 62,
 	},

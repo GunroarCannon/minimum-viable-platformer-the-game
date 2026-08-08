@@ -130,6 +130,8 @@ func _ready() -> void:
 	_setup_motion_trail()
 	_setup_footstep_dust()
 	_apply_outline_material()
+	
+	Global.player = self
 
 func _draw() -> void:
 	var s := Vector2.ONE
@@ -907,6 +909,10 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 			var ov = preload("res://tutorial_death_overlay.gd").new()
 			get_tree().root.add_child(ov)
 		else:
+			# Arm the polish guide before asking StoryDB for a scene: if the finger
+			# is coming, the "go spend your tokens" reminder stands down instead of
+			# saying the same thing one screen earlier.
+			Onboarding.arm_phase2()
 			# Lore cut first (death-count / distance milestones), then the card.
 			var scene: Dictionary = StoryDB.pending("death")
 			if not scene.is_empty():
@@ -940,6 +946,7 @@ func _find_blast_source() -> Vector2:
 
 # ─── COIN MAGNET ───────────────────────────────────────────────────────────
 const MAGNET_RADIUS  := 220.0
+const MAGNET_RADIUS_SQ := MAGNET_RADIUS * MAGNET_RADIUS
 const MAGNET_STRENGTH := 480.0  # px/s pull toward player at edge of radius
 
 func _tick_coin_magnet(_delta: float) -> void:
@@ -949,14 +956,17 @@ func _tick_coin_magnet(_delta: float) -> void:
 		if not c is Node2D: continue
 		if not is_instance_valid(c): continue
 		var coin = c as Node2D
+		var diff: Vector2 = global_position - coin.global_position
+		# Squared compare first — this runs over every live coin every frame, and
+		# the vast majority are far away, so the sqrt is not worth paying for them.
+		var d2: float = diff.length_squared()
+		if d2 <= 0.0 or d2 > MAGNET_RADIUS_SQ: continue
 		if coin.get("_collected") == true: continue
 		if coin.get("flying") == true: continue
-		var diff: Vector2 = global_position - coin.global_position
-		var dist: float = diff.length()
-		if dist <= 0.0 or dist > MAGNET_RADIUS: continue
+		var dist: float = sqrt(d2)
 		# Pull strength increases as coin gets closer (inverse-linear).
 		var t: float = 1.0 - (dist / MAGNET_RADIUS)
-		coin.global_position += diff.normalized() * MAGNET_STRENGTH * t * _delta
+		coin.global_position += (diff / dist) * MAGNET_STRENGTH * t * _delta
 
 
 # ─── PARRY MECHANIC ────────────────────────────────────────────────────────

@@ -4,6 +4,11 @@ extends Area2D
 
 var _collected: bool = false
 var _t: float = 0.0
+## Coins are placed across the entire level up front, so most of them are
+## nowhere near the camera. Only the on-screen ones animate, redraw or watch for
+## overlaps — without this a coin-heavy run pays for hundreds of _process calls
+## and area broadphase checks every frame, which is what made it stutter.
+var _notifier: VisibleOnScreenNotifier2D = null
 ## Coins redraw at a throttled rate: the bob/pulse is slow, so ~15fps is
 ## visually identical but costs a fraction of the per-frame draw calls when
 ## dozens of coins are on screen.
@@ -29,6 +34,31 @@ func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	add_to_group("coins")
 	z_index = 5
+
+	_notifier = VisibleOnScreenNotifier2D.new()
+	_notifier.rect = Rect2(-48, -48, 96, 96)
+	_notifier.screen_entered.connect(_wake)
+	_notifier.screen_exited.connect(_sleep)
+	add_child(_notifier)
+	_sleep()
+	# The notifier only reports state after the first visibility pass, so poll
+	# once for coins that spawn already on camera.
+	_sync_visibility.call_deferred()
+
+func _wake() -> void:
+	if _collected: return
+	set_process(true)
+	set_deferred("monitoring", true)
+	queue_redraw()
+
+func _sleep() -> void:
+	set_process(false)
+	set_deferred("monitoring", false)
+
+func _sync_visibility() -> void:
+	if _collected: return
+	if _notifier != null and is_instance_valid(_notifier) and _notifier.is_on_screen():
+		_wake()
 
 func _process(delta: float) -> void:
 	if _collected or flying: return
@@ -66,12 +96,15 @@ func _collect() -> void:
 	# A coin is always worth exactly ONE token — never two.
 	Global.add_tokens_flat(1)
 	TokenPop.spawn(get_parent(), global_position, 1)
+	if not Global.is_unlocked("particles"):
+		queue_free()
+		return
 	var p := CPUParticles2D.new()
 	p.texture = Global.get_circle_texture()
 	p.emitting = true
 	p.one_shot = true
-	p.amount = 22
-	p.lifetime = 0.55
+	p.amount = 10
+	p.lifetime = 0.45
 	p.explosiveness = 1.0
 	p.spread = 180.0
 	p.gravity = Vector2(0, 380)

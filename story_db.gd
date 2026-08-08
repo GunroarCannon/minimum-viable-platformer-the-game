@@ -322,6 +322,40 @@ const SCENES: Array = [
 		{"who": "sponsor",  "text": "SAVING IS A VALID STRATEGY! Saving is also how the last one ended. But it is VALID!"},
 	],
 },
+{
+	# Nudge toward the shop once there's real money on the table. Low priority so a
+	# death-count milestone always wins the slot, and once=false so it can come back
+	# in a later session if the tokens are still sitting there.
+	"id": "spend_reminder", "at": "death", "mode": "scrim", "once": false,
+	"priority": -5,
+	"when": {"unspent_tokens_at_least": 10, "requires_unlocked": "ui",
+		"no_guide_pending": true},
+	"blocks": [
+		{"who": "narrator", "text": "You are carrying ten tokens around a world that does not have a shop in it yet, because you haven't been to the shop."},
+		{"who": "princess", "text": "SPEND THEM! spend them on something SILLY! spend them on ME"},
+		{"who": "narrator", "text": "The Shop button is on this screen. It has been on this screen the whole time."},
+	],
+},
+
+# ══ POLISH GUIDE (SECOND PASS) ════════════════════════════════════════════
+# Requested by id from onboarding.gd's phase-2 runners, never auto-fired.
+{
+	"id": "guide2_intro", "at": "guide", "mode": "scrim",
+	"blocks": [
+		{"who": "narrator", "text": "You have money now. Quite a lot of it, for someone whose only income is dying."},
+		{"who": "purple",   "text": "It runs. It lands. It is not pleasant to look at."},
+		{"who": "narrator", "text": "He means the game has no feel. Everything moves, nothing lands. Let's fix that part."},
+		{"who": "narrator", "text": "Shop. I'll point."},
+	],
+},
+{
+	"id": "guide2_shop", "at": "guide", "mode": "scrim",
+	"blocks": [
+		{"who": "narrator", "text": "Squash and stretch, a sprite that isn't a rectangle, and a menu that isn't an apology."},
+		{"who": "sponsor",  "text": "POLISH IS NOT COSMETIC! Polish is how the player knows the thing happened! That one is FREE ADVICE and I regret it!"},
+		{"who": "narrator", "text": "It's right, irritatingly. Buy them in the order I point."},
+	],
+},
 
 ]
 
@@ -382,6 +416,16 @@ func _purchased(sid: String) -> bool:
 		return bool(sk.is_purchased(sid))
 	return bool(Global.unlocked.get(sid, false))
 
+## True when a guide is unfinished, or the polish guide is armed with something it
+## can actually point at — i.e. the finger is about to speak on this very screen.
+## Reminders stand down rather than double up.
+func _guide_pending() -> bool:
+	var ob = get_node_or_null("/root/Onboarding")
+	if ob == null: return false
+	if ob.has_method("is_done") and not ob.is_done(): return true
+	if ob.has_method("phase2_ready") and ob.phase2_ready(): return true
+	return false
+
 func _matches(when: Dictionary) -> bool:
 	for key in when.keys():
 		var want = when[key]
@@ -406,6 +450,8 @@ func _matches(when: Dictionary) -> bool:
 				if Global.session_gap_days < float(want): return false
 			"unspent_tokens_at_least":
 				if Global.tokens < int(want): return false
+			"no_guide_pending":
+				if bool(want) and _guide_pending(): return false
 			_:
 				push_warning("[StoryDB] unknown condition key '%s'" % key)
 				return false

@@ -590,7 +590,7 @@ func _configure_pre_ui(tokens_awarded: int) -> void:
 	btn_menu.visible = false
 	btn_exit.visible = true
 	# Forced guide: talks, then points the finger at Buy UI. No-ops once bought.
-	Onboarding.attach.call_deferred(self, "game_over_pre_ui")
+	Onboarding.attach.call_deferred(self, "game_over")
 
 func _configure_post_ui(tokens_awarded: int, distance_m: int) -> void:
 	title_label.text = "you died."
@@ -604,6 +604,10 @@ func _configure_post_ui(tokens_awarded: int, distance_m: int) -> void:
 	btn_shop.text = "Shop (%d ★)" % Global.tokens
 	btn_menu.visible = true
 	btn_exit.visible = true
+	# Polish guide: only does anything once a death armed it and something in
+	# its chain is still unbought. Deferred so the buttons have their final
+	# layout rect before the finger measures one.
+	Onboarding.attach.call_deferred(self, "game_over")
 
 func _play_in_tween() -> void:
 	box.modulate.a = 0.0
@@ -620,6 +624,11 @@ func _play_in_tween() -> void:
 ## or "Buy UI" in pre-UI mode) gets a little grow + jiggle so the eye lands on it,
 ## and settles at a small tilt for character.
 func _juice_primary_button() -> void:
+	# ...unless a guide owns the player's attention. Before the first guide is
+	# finished the next action is whatever the finger is about to point at, and
+	# while a finger is up nothing else on screen should be waving for a tap.
+	if Onboarding.suppresses_juice():
+		return
 	var btn: Button = _pick_primary_button()
 	if btn == null or not is_instance_valid(btn):
 		return

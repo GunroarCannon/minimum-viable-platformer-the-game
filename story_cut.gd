@@ -16,6 +16,16 @@ const BG_COLOR := Color(0.02, 0.01, 0.03)
 const SCRIM_ALPHA := 0.80
 const CUT_LAYER := 210
 
+## ─── QUEUE ──────────────────────────────────────────────────────────────
+## Two cuts can be asked for at once — a death milestone and an onboarding beat,
+## say — and each call site just adds its own node to the root. Before this they
+## drew on top of each other and both ate the same tap. Now only one is ever
+## live; the rest wait in line and start the instant the one ahead closes.
+## `finished` still fires when THIS cut ends, so `await cut.finished` keeps
+## meaning exactly what it always did — it just may wait longer first.
+static var _active: Object = null
+static var _queue: Array = []
+
 var _blocks: Array = []
 var _mode: String = "black"
 var _index: int = -1
@@ -29,6 +39,8 @@ var _last_input_frame: int = -1
 var _closing: bool = false
 var _prev_paused: bool = false
 var _hint_tw: Tween = null
+## False until this cut reaches the front of the queue and takes the screen.
+var _started: bool = false
 
 var _root: Control
 var _bg: ColorRect
@@ -39,13 +51,47 @@ var _hint: Label
 func _ready() -> void:
 	layer = CUT_LAYER
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if _active != null and is_instance_valid(_active) and _active != self:
+		# Someone else has the screen. Stay dark and silent — no build, no pause,
+		# and _input ignores us — until they hand it over.
+		visible = false
+		_queue.append(self)
+		return
+	_begin()
+
+## Take the screen. The pause state is captured here rather than in _ready() so a
+## cut that waited in line records the real pre-cut value instead of the pause its
+## predecessor was still holding — otherwise queued cuts would leave the game
+## frozen when the last one closed.
+func _begin() -> void:
+	_active = self
+	_started = true
+	visible = true
 	_prev_paused = get_tree().paused
 	get_tree().paused = true
-	_build()
+	if _root == null:
+		_build()
 	if not _blocks.is_empty() and _index < 0:
 		_show_block(0)
 
-## Queue a scene's blocks. Safe to call before or after the node enters the tree.
+## Hand the screen to whoever is next in line. Called when this cut closes, and
+## again from _exit_tree so a cut torn down some other way can't strand the queue.
+func _release() -> void:
+	if _active != self:
+		_queue.erase(self)
+		return
+	_active = null
+	while not _queue.is_empty():
+		var nxt = _queue.pop_front()
+		if nxt != null and is_instance_valid(nxt) and nxt.is_inside_tree():
+			nxt._begin()
+			return
+
+func _exit_tree() -> void:
+	_release()
+
+## Queue a scene's blocks. Safe to call before or after the node enters the tree —
+## and while queued, `_root` is still null, so this only records what to play.
 func play(blocks: Array, mode: String = "black") -> void:
 	_blocks = blocks
 	_mode = mode
@@ -204,6 +250,9 @@ func _end_typing() -> void:
 
 func _input(event: InputEvent) -> void:
 	if _closing: return
+	# A cut still waiting its turn is invisible and must be deaf too, or it would
+	# eat the taps meant for the cut that is actually on screen.
+	if not _started: return
 	# The cut is modal: nothing behind it may react while it is up.
 	get_viewport().set_input_as_handled()
 
@@ -243,7 +292,12 @@ func _close() -> void:
 	tw.tween_callback(func():
 		if is_inside_tree():
 			get_tree().paused = _prev_paused
+		# Order matters. Un-pause first so whoever is next records the real pre-cut
+		# value. Emit before releasing so a listener that starts its own cut from
+		# `finished` lands in the queue behind us and gets promoted by the _release
+		# below, rather than opening on top of a cut that was already waiting.
 		finished.emit()
+		_release()
 		queue_free()
 	)
 

@@ -8,7 +8,7 @@ extends Node
 ## resumes where it left off.
 ##
 ## Each scene calls Onboarding.attach(self, "<context>") from _ready():
-##   ui.gd        → "game_over_pre_ui"
+##   ui.gd        → "game_over"
 ##   main_menu.gd → "main_menu"
 ##   shop.gd      → "shop"
 ##
@@ -25,6 +25,18 @@ const STEP_DONE    := "done"
 ## guarantee the player can afford the whole chain.
 const CHAIN := ["ui", "procgen", "enemies_basic"]
 
+## ─── PHASE 2 ────────────────────────────────────────────────────────────
+## A second, softer guide. Once the player is sitting on a pile of tokens and
+## still hasn't bought the polish upgrades, a death arms it and the finger comes
+## back to walk them to the shop. Unlike phase 1 it owns no saved step: progress
+## is simply "which of these is still unbought", so it can't desync.
+##
+## Prerequisites are walked first (you cannot point at a locked node), so the
+## real order is the dependency closure of these three.
+const CHAIN2 := ["juice_squash", "player_sprite", "main_menu_extras"]
+## Tokens on hand at death before the second guide will arm.
+const PHASE2_TOKEN_GATE := 25
+
 const StoryCut := preload("res://story_cut.gd")
 const GuideFinger := preload("res://guide_finger.gd")
 
@@ -33,6 +45,8 @@ var _cut_busy: bool = false
 var _running: bool = false
 var _pending_sid: String = ""
 var _shop_host: Node = null
+## True while the currently-attached guide is the phase-2 polish pass.
+var _phase2: bool = false
 
 func step() -> String:
 	var s := String(Global.onboard_step)
@@ -44,6 +58,75 @@ func chain() -> Array:
 
 func is_done() -> bool:
 	return step() == STEP_DONE
+
+## ─── PHASE 2 STATE ──────────────────────────────────────────────────────
+
+## The dependency closure of CHAIN2, in an order where every entry's prereqs come
+## before it. Anything already owned drops out, so an empty result means the
+## whole polish set is bought and phase 2 has nothing left to say.
+func phase2_targets() -> Array:
+	var out: Array = []
+	for sid in CHAIN2:
+		_collect_unbought(sid, out)
+	return out
+
+func _collect_unbought(sid: String, out: Array) -> void:
+	if sid in out: return
+	if not SkillsDB.SKILLS.has(sid): return
+	if SkillsDB.is_purchased(sid): return
+	for req in SkillsDB.SKILLS[sid].get("requires", []):
+		_collect_unbought(String(req), out)
+	out.append(sid)
+
+## The next node phase 2 should point at, or "" when it's finished.
+func phase2_next() -> String:
+	var t := phase2_targets()
+	return String(t[0]) if not t.is_empty() else ""
+
+func phase2_armed() -> bool:
+	return Global.onboard2_armed and not phase2_targets().is_empty()
+
+## Whether the next polish target can actually be bought right now. Phase 2 points
+## at Shop from two screens that can't see the tree, and the finger gates every
+## other button — so if the shop has nothing buyable, pointing there would trap the
+## player in a menu → shop → menu loop with no way to start a run. In that case the
+## guide stays armed but silent, and picks up again once they can afford it.
+func phase2_ready() -> bool:
+	if not phase2_armed(): return false
+	var sid := phase2_next()
+	if sid == "": return false
+	return SkillsDB.SKILLS.has(sid) and not SkillsDB.is_purchased(sid) \
+		and SkillsDB.prereqs_met(sid) and SkillsDB.can_afford(sid)
+
+## Called from the death path once the player is rich enough. Returns true if the
+## guide actually armed — if every polish upgrade is already owned it arms
+## nothing and no finger will ever appear.
+func arm_phase2() -> bool:
+	if not is_done(): return false          # phase 1 still has the floor
+	if Global.onboard2_armed: return true
+	if Global.tokens < PHASE2_TOKEN_GATE: return false
+	if phase2_targets().is_empty(): return false
+	Global.onboard2_armed = true
+	Global.save_state()
+	return true
+
+func _disarm_phase2_if_complete() -> void:
+	if Global.onboard2_armed and phase2_targets().is_empty():
+		Global.onboard2_armed = false
+		Global.save_state()
+
+## ─── JUICE SUPPRESSION ──────────────────────────────────────────────────
+
+## Menus ask this before playing their attention-grabbing wiggle on a button.
+## Three cases, all the same rule — the guide owns the player's attention:
+##   • the first guide hasn't been completed yet, so no death-menu button should
+##     be jiggling for a player who is about to be pointed somewhere specific;
+##   • a guide (either phase) is on screen right now;
+##   • the polish guide is armed AND has something buyable, so its finger is
+##     about to arrive. (Armed-but-broke doesn't count — no finger comes, so the
+##     usual juice should play.)
+func suppresses_juice() -> bool:
+	return (not is_done()) or is_active() or phase2_ready()
 
 ## True while a cut or the finger owns the screen — StoryDB checks this so
 ## ambient story scenes never talk over the guide.
@@ -67,6 +150,13 @@ func notify_purchase(sid: String) -> void:
 	if sid == "" or sid != _pending_sid: return
 	_pending_sid = ""
 	_clear_finger()
+	if _phase2:
+		_disarm_phase2_if_complete()
+		if phase2_armed() and _shop_host != null and is_instance_valid(_shop_host):
+			await get_tree().create_timer(0.9).timeout
+			if is_instance_valid(_shop_host):
+				attach(_shop_host, "shop")
+		return
 	if sid == "procgen":
 		set_step(STEP_ENEMIES)
 	elif sid == "enemies_basic":
@@ -78,15 +168,86 @@ func notify_purchase(sid: String) -> void:
 
 func attach(host: Node, context: String) -> void:
 	_clear_finger()
-	if is_done() or host == null: return
+	if host == null: return
+	if is_done():
+		# Phase 1 finished. The polish guide takes over only once a death has
+		# armed it and something in its chain is still unbought.
+		_disarm_phase2_if_complete()
+		if not phase2_armed(): return
+		_phase2 = true
+		_running = true
+		match context:
+			"game_over", "game_over_pre_ui": await _run2_game_over(host)
+			"main_menu":                     await _run2_menu(host)
+			"shop":                          await _run2_shop(host)
+		_running = false
+		return
+	_phase2 = false
 	# Set synchronously, before the first await below, so a same-frame deferred
 	# _play_pending_cut() in the host sees is_active() and stands down.
 	_running = true
 	match context:
-		"game_over_pre_ui": await _run_buy_ui(host)
-		"main_menu":        await _run_menu(host)
-		"shop":             await _run_shop(host)
+		"game_over", "game_over_pre_ui": await _run_buy_ui(host)
+		"main_menu":                     await _run_menu(host)
+		"shop":                          await _run_shop(host)
 	_running = false
+
+
+## ─── PHASE 2 STEPS ──────────────────────────────────────────────────────
+## Same shape as phase 1, but every step is derived from what's still unbought
+## rather than from a saved cursor, and the game-over screen points at Shop
+## instead of at Retry.
+
+func _run2_game_over(host: Node) -> void:
+	if not phase2_ready(): return
+	await _play_cut("guide2_intro")
+	if not is_instance_valid(host): return
+	var btn: Button = host.get("btn_shop")
+	if not _button_ok(btn):
+		# No shop button on this game-over card (pre-UI layout) — stay armed and
+		# catch the player on the menu instead.
+		return
+	_ensure_finger().point_at_control(btn)
+
+func _run2_menu(host: Node) -> void:
+	if not phase2_ready(): return
+	if not is_instance_valid(host): return
+	var btn: Button = host.get("shop_btn")
+	if not _button_ok(btn):
+		push_warning("[Onboarding] Shop button unavailable — no finger shown.")
+		return
+	_ensure_finger().point_at_control(btn)
+
+func _run2_shop(host: Node) -> void:
+	_shop_host = host
+	var sid := phase2_next()
+	if sid == "":
+		_disarm_phase2_if_complete()
+		return
+
+	var tv: Control = host.get("tree_view")
+	if not _skill_ok(sid, tv):
+		# Unaffordable or not yet revealed: let the player play. The guide stays
+		# armed and re-points next time they walk in with more tokens.
+		return
+
+	await _play_cut("guide2_shop")
+	if not is_instance_valid(host) or not is_instance_valid(tv): return
+
+	tv.focus_on(sid)
+	await get_tree().create_timer(0.6).timeout
+	if not is_instance_valid(host) or not is_instance_valid(tv): return
+	if not _skill_ok(sid, tv):
+		return
+
+	_pending_sid = sid
+	var r: float = tv.node_screen_radius()
+	var centre: Vector2 = tv.screen_pos_of(sid)
+	_ensure_finger().point_at_rect(Rect2(centre - Vector2(r, r), Vector2(r, r) * 2.0))
+
+	var cb := Callable(self, "_on_shop_node_selected").bind(host)
+	if not tv.skill_selected.is_connected(cb):
+		tv.skill_selected.connect(cb)
 
 
 ## ─── STEPS ──────────────────────────────────────────────────────────────
