@@ -98,6 +98,20 @@ func _ready() -> void:
 	_on_skill_selected(SkillsDB.ROOT_ID)
 	AudioManager.play_music("shop", 1.2)
 	AudioManager.connect_ui_clicks(self)
+	# Forced guide: patter, pans the tree, then points at the node. No-ops after.
+	Onboarding.attach.call_deferred(self, "shop")
+	_play_pending_cut.call_deferred("shop_open")
+
+
+## Fire any ambient StoryDB scene queued for this screen (purchase reactions,
+## the passive-aggressive nudge when tokens pile up). Skipped while the guide runs.
+func _play_pending_cut(at: String) -> void:
+	var scene: Dictionary = StoryDB.pending(at)
+	if scene.is_empty(): return
+	var cut = preload("res://story_cut.gd").new()
+	get_tree().root.add_child(cut)
+	cut.play(scene.get("blocks", []), String(scene.get("mode", "black")))
+	StoryDB.mark_seen(scene)
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):
@@ -261,6 +275,7 @@ func _on_buy() -> void:
 	if sid == "": return
 	if SkillsDB.purchase(sid):
 		AudioManager.play("ui_buy", 0.0, 0.04)
+		Onboarding.notify_purchase(sid)
 		# small celebration tween on token label
 		var tw = create_tween()
 		tw.tween_property(tokens_label, "scale", Vector2(1.25, 1.25), 0.10).set_trans(Tween.TRANS_BACK)

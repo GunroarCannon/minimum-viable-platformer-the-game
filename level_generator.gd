@@ -258,6 +258,14 @@ func _ready() -> void:
 		var tscript = preload("res://tutorial_screen.gd")
 		var tut = tscript.new()
 		add_child(tut)
+	else:
+		# Ambient run-start scenes (e.g. "you've been away a while").
+		var scene: Dictionary = StoryDB.pending("run_start")
+		if not scene.is_empty():
+			var cut = preload("res://story_cut.gd").new()
+			get_tree().root.add_child(cut)
+			cut.play(scene.get("blocks", []), String(scene.get("mode", "black")))
+			StoryDB.mark_seen(scene)
 
 
 # ─── COIN PATTERNED PLACEMENT ───────────────────────────────────────────
@@ -537,7 +545,7 @@ func _chainable_indices(pool: Array, prev_type: String, prev_allow_next: Array) 
 # ─── MAIN GENERATION ────────────────────────────────────────────────────
 
 ## Fixed seed used before the player unlocks procgen so runs are identical.
-const STARTER_SEED := 42024
+const STARTER_SEED := 5
 ## Seed range so codes stay 4 chars in Global.SEED_ALPHABET (31^4 = 923521).
 const SEED_MAX := 923521
 

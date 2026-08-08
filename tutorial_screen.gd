@@ -7,26 +7,50 @@ extends CanvasLayer
 signal finished
 
 # ─── EDIT THESE TO CHANGE THE TUTORIAL ─────────────────────────────────────
+## Optional "who" pulls font/size/colour from StoryDB.VOICES, so the intro speaks
+## in the same voices as the later story cuts. Omit it for the neutral look.
 const SLIDES: Array = [
 	{
+		"who":   "sponsor",
 		"title": "WELCOME FRIENDS!",
 		"body":  "Welcome to a happy world of challenge!\nGrab your best friends and get ready to smile.\n(If you have any friends).",
 		"icon":  "♥",
 	},
 	{
+		"who":   "narrator",
 		"title": "JOYFUL JUMPING",
-		"body":  "Tap to jump. Tap longer to jump higher!\nAvoid the pointy hugs, or bounce on their heads for a fun boost!\nThey just want to be close to you. Forever.",
+		"body":  "Tap to jump. Tap longer to jump higher.\nAvoid the pointy hugs, or bounce on their heads for a fun boost.\nThey just want to be close to you. Forever.",
 		"icon":  "↑",
 	},
 	{
+		"who":   "princess",
+		"title": "oh, a NEW one",
+		"body":  "Hello! You're the forty-thousandth today.\nDon't listen to the tall voice, it reads from a script it hasn't finished.\nI'll be over here. Being decorative. Allegedly.",
+		"icon":  "❀",
+	},
+	{
+		"who":   "soul",
+		"title": "listen",
+		"body":  "none of this belongs to him\nhe borrowed the whole thing and he is going to ask for it back\nplease remember i said it first",
+		"icon":  "◌",
+	},
+	{
+		"who":   "narrator",
 		"title": "WE GAVE YOU EVERYTHING",
-		"body":  "Good news! We've generously unlocked all features for you!\nEnjoy this fully developed, perfectly safe experience.\nTry not to disappoint us.",
+		"body":  "Ignore that. It gets in through the save file.\nGood news! We've generously unlocked all features for you.\nEnjoy this fully developed, perfectly safe experience.",
 		"icon":  "★",
+	},
+	{
+		"who":   "purple",
+		"title": "EVERYTHING",
+		"body":  "YES.\nEVERYTHING.\nFOR NOW.",
+		"icon":  "▲",
 	},
 ]
 # ─────────────────────────────────────────────────────────────────────────────
 
 const FONT_KA1 := preload("res://assets/fonts/ka1.ttf")
+const FONT_NERVOUS := preload("res://assets/fonts/Nervous.ttf")
 const BG_COLOR    := Color(0.04, 0.03, 0.08)
 const TITLE_COLOR := Color(1.00, 0.90, 0.40)
 const BODY_COLOR  := Color(0.88, 0.84, 0.92)
@@ -99,7 +123,7 @@ func _build_ui() -> void:
 	_body_label = Label.new()
 	_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_body_label.add_theme_font_override("font", preload("res://assets/fonts/Nervous.ttf"))
+	_body_label.add_theme_font_override("font", FONT_NERVOUS)
 	_body_label.add_theme_font_size_override("font_size", 26)
 	_body_label.add_theme_color_override("font_color", BODY_COLOR)
 	_body_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -168,6 +192,7 @@ func _show_slide(idx: int) -> void:
 		_body_label.text  = s.get("body", "")
 		_body_label.visible_characters = 0
 		_hint_label.text  = "tap to continue" if idx < SLIDES.size() - 1 else "tap to play"
+		_apply_voice(s.get("who", ""))
 		_update_dots(idx)
 	)
 	# Fade in.
@@ -199,6 +224,27 @@ func _show_slide(idx: int) -> void:
 func _update_dots(active: int) -> void:
 	for i in _dots.size():
 		_dots[i].add_theme_color_override("font_color", DOT_ACTIVE if i == active else DOT_IDLE)
+
+## Restyle the slide in a StoryDB voice. Falls back to the neutral look when the
+## slide has no "who" (or names one that doesn't exist).
+func _apply_voice(who: String) -> void:
+	if who == "" or not StoryDB.VOICES.has(who):
+		_title_label.add_theme_font_override("font", FONT_KA1)
+		_title_label.add_theme_color_override("font_color", TITLE_COLOR)
+		_body_label.add_theme_font_override("font", FONT_NERVOUS)
+		_body_label.add_theme_font_size_override("font_size", 26)
+		_body_label.add_theme_color_override("font_color", BODY_COLOR)
+		_icon_label.add_theme_color_override("font_color", ICON_COLOR)
+		return
+	var v: Dictionary = StoryDB.voice(who)
+	var col: Color = v.get("color", BODY_COLOR)
+	var font: Font = v.get("font", FONT_NERVOUS)
+	_title_label.add_theme_font_override("font", font)
+	_title_label.add_theme_color_override("font_color", col.lerp(TITLE_COLOR, 0.25))
+	_body_label.add_theme_font_override("font", font)
+	_body_label.add_theme_font_size_override("font_size", int(v.get("size", 26)) - 2)
+	_body_label.add_theme_color_override("font_color", col)
+	_icon_label.add_theme_color_override("font_color", col)
 
 # ─── ADVANCE / FINISH ────────────────────────────────────────────────────────
 

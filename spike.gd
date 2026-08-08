@@ -7,6 +7,12 @@ class_name Spike
 
 var sprite: Sprite2D = null
 
+## Overlap polling is throttled to ~20Hz: area overlap lists only update on
+## physics steps anyway, so polling every frame (as we did) wastes time when
+## many spikes are on screen.
+const POLL_INTERVAL := 0.05
+var _poll_timer: float = 0.0
+
 func _ready() -> void:
 	# Render behind floor visuals (z=-10) so the spike base looks planted in ground.
 	z_index = -12
@@ -35,13 +41,17 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 	area_entered.connect(_on_area_entered)
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if Global.debug_toggles.get("show_collisions", false):
 		queue_redraw()
 	# Continuous overlap check so a body already inside us (or one we passed into)
 	# is still resolved — body_entered only fires on the entering frame.
 	if not monitoring:
 		return
+	_poll_timer -= delta
+	if _poll_timer > 0.0:
+		return
+	_poll_timer = POLL_INTERVAL
 	for b in get_overlapping_bodies():
 		_resolve_body(b)
 

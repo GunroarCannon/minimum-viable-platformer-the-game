@@ -2,14 +2,20 @@ extends CanvasLayer
 
 const FONT_KA1 := preload("res://assets/fonts/ka1.ttf")
 const FONT_PRIMITIVE := preload("res://assets/fonts/Terminus.ttf")
+const FONT_JUICE := preload("res://assets/fonts/orange juice 2.0.ttf")
+const FONT_NERVOUS := preload("res://assets/fonts/Nervous.ttf")
 const BG_COLOR    := Color(0.02, 0.01, 0.03)
 const PURPLE_TEXT := Color(0.60, 0.15, 0.90)
+const PINK_TEXT   := Color(1.00, 0.56, 0.82)
+const SOUL_TEXT   := Color(0.44, 0.85, 0.82)
 const PLAIN_TEXT  := Color(0.85, 0.85, 0.85)
 
 var _step: int = 0
 var _bg: ColorRect
 var _comfort_label: Label
 var _purple_label: Label
+var _princess_label: Label
+var _soul_label: Label
 var _plain_label: Label
 var _unlock_label: Label
 var _typing: bool = false
@@ -57,6 +63,35 @@ func _ready() -> void:
 	_purple_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_purple_label)
 
+	# The pink one and the trapped soul get a beat each before the narrator
+	# recovers and starts selling. Same voices as StoryDB so the intro, this
+	# overlay and the later story cuts all read as one system.
+	_princess_label = Label.new()
+	_princess_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_princess_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_princess_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_princess_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_princess_label.add_theme_font_override("font", FONT_JUICE)
+	_princess_label.add_theme_font_size_override("font_size", 40)
+	_princess_label.add_theme_color_override("font_color", PINK_TEXT)
+	_princess_label.text = "oh, it took the music as well.\nit always takes the music first.\ndon't cry — they left you a shop. so generous."
+	_princess_label.modulate.a = 0.0
+	_princess_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_princess_label)
+
+	_soul_label = Label.new()
+	_soul_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_soul_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_soul_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_soul_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_soul_label.add_theme_font_override("font", FONT_NERVOUS)
+	_soul_label.add_theme_font_size_override("font_size", 26)
+	_soul_label.add_theme_color_override("font_color", SOUL_TEXT)
+	_soul_label.text = "the tall voice is lying to you\nit did not lose the game\nit is the one selling it back\ncount what it charges you"
+	_soul_label.modulate.a = 0.0
+	_soul_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_soul_label)
+
 	_plain_label = Label.new()
 	_plain_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_plain_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -65,7 +100,7 @@ func _ready() -> void:
 	_plain_label.add_theme_font_override("font", FONT_PRIMITIVE)
 	_plain_label.add_theme_font_size_override("font_size", 28)
 	_plain_label.add_theme_color_override("font_color", PLAIN_TEXT)
-	_plain_label.text = "The game has been lost.\nOh no! Anyway...\nYou have to gain it back and build the MVP."
+	_plain_label.text = "Ignore that. It gets in through the save file.\nThe game has been lost. Oh no! Anyway...\nYou'll have to buy it back and build the MVP yourself."
 	_plain_label.modulate.a = 0.0
 	_plain_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_plain_label)
@@ -148,8 +183,24 @@ func _process(_delta: float) -> void:
 	if _step == 1 and not _glitching and _purple_label.modulate.a > 0.1:
 		_purple_label.position = Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
 
+	# Pink text drifts instead of jittering — she is the only calm thing in here.
+	if _step == 2 and _princess_label.modulate.a > 0.1:
+		var t := float(Time.get_ticks_msec()) * 0.001
+		_princess_label.position = Vector2(sin(t * 2.1) * 7.0, sin(t * 1.3) * 5.0)
+
+## Fade one speaker out and the next in, re-enabling input when the swap lands.
+func _crossfade(out_lbl: Label, in_lbl: Label) -> void:
+	_transitioning = true
+	var tw := create_tween()
+	tw.tween_property(out_lbl, "modulate:a", 0.0, 0.4)
+	tw.tween_interval(0.2)
+	tw.tween_property(in_lbl, "modulate:a", 1.0, 0.6)
+	tw.tween_callback(func():
+		_transitioning = false
+		_can_advance = true
+	)
+
 func _input(event: InputEvent) -> void:
-	print("tap! step:", _step, " can_advance:", _can_advance, " transitioning:", _transitioning)
 	var is_tap := false
 	if event is InputEventScreenTouch and event.pressed:
 		is_tap = true
@@ -179,30 +230,18 @@ func _advance() -> void:
 	_can_advance = false  # Lock while transition plays; re-enabled at tween end
 	if advancing_step == 1:
 		_purple_label.position = Vector2.ZERO
-		_transitioning = true
-		var tw := create_tween()
-		tw.tween_property(_purple_label, "modulate:a", 0.0, 0.4)
-		tw.tween_interval(0.2)
-		tw.tween_property(_plain_label, "modulate:a", 1.0, 0.6)
-		tw.tween_callback(func():
-			_transitioning = false
-			_can_advance = true
-		)
+		_crossfade(_purple_label, _princess_label)
 	elif advancing_step == 2:
-		AudioManager.stop_music(0.6)
-		_transitioning = true
-		var tw := create_tween()
-		tw.tween_property(_plain_label, "modulate:a", 0.0, 0.4)
-		tw.tween_interval(0.2)
-		tw.tween_property(_unlock_label, "modulate:a", 1.0, 0.6)
-		tw.tween_callback(func():
-			_transitioning = false
-			_can_advance = true
-		)
+		_princess_label.position = Vector2.ZERO
+		_crossfade(_princess_label, _soul_label)
 	elif advancing_step == 3:
+		_crossfade(_soul_label, _plain_label)
+	elif advancing_step == 4:
+		AudioManager.stop_music(0.6)
+		_crossfade(_plain_label, _unlock_label)
+	elif advancing_step == 5:
 		Global.tutorial_seen = true
 		Global.save_state()
 		queue_free()
-		print("current reloadin")
 		get_tree().change_scene_to_file("res://leve.tscn")
 		#get_tree().reload_current_scene()

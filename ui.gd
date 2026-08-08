@@ -589,11 +589,14 @@ func _configure_pre_ui(tokens_awarded: int) -> void:
 	btn_shop.visible = false
 	btn_menu.visible = false
 	btn_exit.visible = true
+	# Forced guide: talks, then points the finger at Buy UI. No-ops once bought.
+	Onboarding.attach.call_deferred(self, "game_over_pre_ui")
 
 func _configure_post_ui(tokens_awarded: int, distance_m: int) -> void:
 	title_label.text = "you died."
 	tokens_earned_label.text = "+%d ★   |   %d m" % [tokens_awarded, distance_m]
-	hint_label.text = "Spend tokens in the shop to unlock more."
+	hint_label.text = StoryDB.taunt(
+		Global.last_death_cause, distance_m, int(Global.stats.get("deaths", 0)))
 	btn_buy_ui.visible = false
 	btn_retry.visible = true
 	btn_retry.text = "New" if Global.is_unlocked("level_library") else "Run again"
@@ -658,6 +661,7 @@ func _on_buy_ui() -> void:
 	if Global.tokens < 1: return
 	if Global.spend(1):
 		Global.grant("ui")
+		Onboarding.advance_to(Onboarding.STEP_MENU)
 		get_tree().change_scene_to_file("res://main_menu.tscn")
 
 func _on_retry() -> void:

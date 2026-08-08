@@ -10,7 +10,8 @@ config_version=5
 
 [application]
 
-config/name="minimum-viable-platformer"
+config/name="Minimum Viable Platformer"
+config/version="1.0.0"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.4", "GL Compatibility")
 config/icon="res://icon.svg"
@@ -19,6 +20,8 @@ config/icon="res://icon.svg"
 
 Global="*res://global.gd"
 SkillsDB="*res://skills_db.gd"
+StoryDB="*res://story_db.gd"
+Onboarding="*res://onboarding.gd"
 ScreenFX="*res://screen_fx.gd"
 DebugOverlay="*res://debug_overlay.gd"
 ComboSystem="*res://combo_system.gd"

@@ -55,6 +55,17 @@ var first_death_done: bool = false
 ## True once the intro tutorial has been shown.
 var tutorial_seen: bool = false
 
+## StoryDB scene ids already played, so a once-only cut never repeats.
+var story_seen: Dictionary = {}
+
+## Position in the forced first-run guide. See onboarding.gd for the values.
+var onboard_step: String = ""
+
+## Unix time this save was last written, and how many real days passed between
+## the previous session and this one. StoryDB's days_away_at_least reads the gap.
+var last_played_unix: int = 0
+var session_gap_days: float = 0.0
+
 ## Best distance ever (in tile-units).
 var best_distance: int = 0
 
@@ -257,6 +268,9 @@ func save_state() -> void:
 		"color_palette": color_palette,
 		"sky_color": sky_color,
 		"stats": stats,
+		"story_seen": story_seen,
+		"onboard_step": onboard_step,
+		"last_played_unix": int(Time.get_unix_time_from_system()),
 	}
 	f.store_var(blob)
 	f.close()
@@ -284,6 +298,14 @@ func load_state() -> void:
 	if typeof(stored_stats) == TYPE_DICTIONARY:
 		for k in stored_stats.keys():
 			stats[k] = stored_stats[k]
+	story_seen = blob.get("story_seen", {})
+	onboard_step = String(blob.get("onboard_step", ""))
+	# Gap since the previous session, measured before we stamp "now".
+	var now := int(Time.get_unix_time_from_system())
+	var prev := int(blob.get("last_played_unix", 0))
+	if prev > 0 and now > prev:
+		session_gap_days = float(now - prev) / 86400.0
+	last_played_unix = now
 	stats["sessions"] = int(stats.get("sessions", 0)) + 1
 	_mark_today_played()
 
@@ -412,6 +434,8 @@ func reset_progress() -> void:
 	feature_overrides = {}
 	first_death_done = false
 	tutorial_seen = false
+	story_seen = {}
+	onboard_step = ""
 	best_distance = 0
 	level_library = []
 	color_palette = "default"
@@ -478,6 +502,7 @@ func on_player_death(distance_tiles: int) -> int:
 		best_distance = distance_tiles
 	tokens += awarded
 	stat_add("total_points_earned", awarded)
+	_ensure_onboarding_funds()
 	if is_daily_run:
 		stat_add("daily_completed", 1)
 		is_daily_run = false
@@ -488,6 +513,30 @@ func on_player_death(distance_tiles: int) -> int:
 	_update_library_best_score(current_run_seed, current_run_score)
 	save_state()
 	return awarded
+
+## Total cost of the skills the guided onboarding still asks the player to buy.
+## Read from SkillsDB rather than hardcoded, so rebalancing the tree can't strand
+## a new player mid-tutorial.
+func onboarding_chain_cost() -> int:
+	var sk = get_node_or_null("/root/SkillsDB")
+	var ob = get_node_or_null("/root/Onboarding")
+	if sk == null or ob == null or not ob.has_method("chain"):
+		return 3
+	var total := 0
+	for sid in ob.chain():
+		if sk.SKILLS.has(sid) and not sk.is_purchased(sid):
+			total += int(sk.compute_cost(sid))
+	return total
+
+## The guide is forced, so it must always be affordable. While it is still
+## running, floor the balance at what the remaining chain costs.
+func _ensure_onboarding_funds() -> void:
+	var ob = get_node_or_null("/root/Onboarding")
+	if ob == null or not ob.has_method("is_done") or ob.is_done():
+		return
+	var needed := onboarding_chain_cost()
+	if needed > 0 and tokens < needed:
+		tokens = needed
 
 func _update_library_best_score(seed_val: int, score: int) -> void:
 	if seed_val == 0 or score <= 0: return

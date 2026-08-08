@@ -68,10 +68,14 @@ func _node_radius() -> float:
 
 func _process(delta: float) -> void:
 	var pan = Vector2.ZERO
-	if Input.is_action_pressed("right"): pan.x -= 1
-	if Input.is_action_pressed("left"):  pan.x += 1
-	if Input.is_action_pressed("up"):    pan.y += 1
-	if Input.is_action_pressed("down"):  pan.y -= 1
+	# Keyboard pan polls Input directly, so guide_finger's set_input_as_handled()
+	# can't gate it. Freeze it while the guide is pointing, or the tree slides out
+	# from under the finger.
+	if not Onboarding.is_active():
+		if Input.is_action_pressed("right"): pan.x -= 1
+		if Input.is_action_pressed("left"):  pan.x += 1
+		if Input.is_action_pressed("up"):    pan.y += 1
+		if Input.is_action_pressed("down"):  pan.y -= 1
 	if pan != Vector2.ZERO:
 		_camera_offset += pan * pan_speed_keyboard * delta
 		_user_moved = true
@@ -222,6 +226,20 @@ func set_selected(sid: String) -> void:
 
 func selected_id() -> String:
 	return _selected_id
+
+## ─── PUBLIC GEOMETRY (used by guide_finger.gd via onboarding.gd) ────────────
+
+## Viewport-space centre of a node, so an overlay can point at it.
+func screen_pos_of(sid: String) -> Vector2:
+	return global_position + _world_pos(sid)
+
+## Current on-screen node radius, including zoom.
+func node_screen_radius() -> float:
+	return _node_radius()
+
+## Whether a node is currently drawn (its upstream path is purchased).
+func is_revealed(sid: String) -> bool:
+	return _is_revealed(sid)
 
 ## Tween camera + zoom so `sid` lands in the centre of the view. Also emits
 ## skill_selected and starts a highlight pulse so the user's eye is drawn to it.

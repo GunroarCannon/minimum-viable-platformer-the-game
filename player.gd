@@ -38,6 +38,33 @@ var _near_miss_cd: float = 0.0
 var _near_miss_active: Dictionary = {}
 var _debug_canvas: Node2D
 
+# ─── PERF: cached world lookups ────────────────────────────────────────
+# Rebuilding group arrays via get_nodes_in_group() every frame causes GC
+# churn (visible as random hitches, especially on the web export). We refresh
+# a few times per second instead; gameplay logic doesn't need fresher data.
+const GROUP_REFRESH_INTERVAL := 0.2
+var _group_refresh_timer: float = 0.0
+var _hazards_cache: Array = []
+var _coins_cache: Array = []
+
+# get_local_lowest_y() is called every physics frame; the result only changes
+# when the player crosses into a new tile column, so cache it per column.
+var _lowest_y_cache: float = -999999.0
+var _lowest_y_cache_col: int = -999999999
+
+# Dynamic-zoom world lookups (group scan / shape query) are throttled too —
+# zoom transitions tween over ~0.5s, so 5Hz is plenty and far cheaper.
+var _zoom_should_out: bool = false
+var _zoom_query_timer: float = 0.0
+
+func _refresh_group_caches(delta: float) -> void:
+	_group_refresh_timer -= delta
+	if _group_refresh_timer > 0.0:
+		return
+	_group_refresh_timer = GROUP_REFRESH_INTERVAL
+	_hazards_cache = get_tree().get_nodes_in_group("hazards")
+	_coins_cache = get_tree().get_nodes_in_group("coins")
+
 func _resolve_flags() -> void:
 	# When primitives is forced via debug, everything visual stays primitive.
 	var primitives = Global.use_primitives
@@ -511,6 +538,7 @@ func _process(delta: float) -> void:
 	_debug_canvas.queue_redraw()
 	queue_redraw()
 	super._process(delta)
+	_refresh_group_caches(delta)
 	if is_dead:
 		ScreenFX.wobble_intensity = 0.0
 		return
@@ -621,9 +649,10 @@ func _tick_double_jump_pulse(delta: float) -> void:
 func _tick_near_miss(delta: float) -> void:
 	if _near_miss_cd > 0.0:
 		_near_miss_cd -= delta
-	var hazards := get_tree().get_nodes_in_group("hazards")
+	var hazards := _hazards_cache
 	var still_close: Dictionary = {}
 	for h in hazards:
+		if not h: continue
 		if not h is Node2D: continue
 		if not is_instance_valid(h): continue
 		var dist: float = global_position.distance_to((h as Node2D).global_position)
@@ -663,21 +692,34 @@ func _trigger_near_miss() -> void:
 					.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	)
 
-func _update_dynamic_zoom(_delta: float) -> void:
+func _update_dynamic_zoom(delta: float) -> void:
 	var cam = _get_camera()
 	if not cam or _base_zoom <= 0.0: return
 
-	var should_zoom_out := false
+	# The lookups below (hazard group scan / physics shape query) are throttled:
+	# re-running them a few times per second is plenty since the zoom tweens.
+	_zoom_query_timer -= delta
+	if _zoom_query_timer <= 0.0:
+		_zoom_query_timer = GROUP_REFRESH_INTERVAL
+		_zoom_should_out = _compute_should_zoom_out(cam)
 
+	if _zoom_should_out and not _zoom_tweened_out:
+		_zoom_tweened_out = true
+		_do_zoom_tween(cam, _base_zoom * Global.camera_zoom_out_factor)
+	elif not _zoom_should_out and _zoom_tweened_out:
+		_zoom_tweened_out = false
+		_do_zoom_tween(cam, _base_zoom)
+
+func _compute_should_zoom_out(cam: Camera2D) -> bool:
 	match Global.camera_zoom_mode:
 		1:
-			var hazards = get_tree().get_nodes_in_group("hazards")
-			for h in hazards:
+			for h in _hazards_cache:
+				if not is_instance_valid(h): continue
 				if not h is Node2D: continue
 				var dist = h.global_position.x - global_position.x
 				if dist > 0 and dist > Global.camera_hazard_distance:
-					should_zoom_out = true
-					break
+					return true
+			return false
 		2:
 			if _screen_shape:
 				var vp_size = get_viewport_rect().size
@@ -703,14 +745,8 @@ func _update_dynamic_zoom(_delta: float) -> void:
 						count += int(c.length_tiles)
 					else:
 						count += 1
-				should_zoom_out = count < Global.camera_tile_threshold
-
-	if should_zoom_out and not _zoom_tweened_out:
-		_zoom_tweened_out = true
-		_do_zoom_tween(cam, _base_zoom * Global.camera_zoom_out_factor)
-	elif not should_zoom_out and _zoom_tweened_out:
-		_zoom_tweened_out = false
-		_do_zoom_tween(cam, _base_zoom)
+				return count < Global.camera_tile_threshold
+	return false
 
 func _do_zoom_tween(cam: Camera2D, target_zoom: float) -> void:
 	if _zoom_tween:
@@ -870,8 +906,17 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 		if Global.is_tutorial_run():
 			var ov = preload("res://tutorial_death_overlay.gd").new()
 			get_tree().root.add_child(ov)
-		elif game_over_ui and game_over_ui.has_method("show_game_over"):
-			game_over_ui.show_game_over(awarded, distance_tiles)
+		else:
+			# Lore cut first (death-count / distance milestones), then the card.
+			var scene: Dictionary = StoryDB.pending("death")
+			if not scene.is_empty():
+				var cut = preload("res://story_cut.gd").new()
+				get_tree().root.add_child(cut)
+				cut.play(scene.get("blocks", []), String(scene.get("mode", "black")))
+				StoryDB.mark_seen(scene)
+				await cut.finished
+			if game_over_ui and is_instance_valid(game_over_ui) and game_over_ui.has_method("show_game_over"):
+				game_over_ui.show_game_over(awarded, distance_tiles)
 
 ## Best-guess origin for a bomb blast. Prefers the closest live bomb node in
 ## the hazards group; falls back to the player's own position (which nulls the
@@ -898,8 +943,9 @@ const MAGNET_RADIUS  := 220.0
 const MAGNET_STRENGTH := 480.0  # px/s pull toward player at edge of radius
 
 func _tick_coin_magnet(_delta: float) -> void:
-	var coins := get_tree().get_nodes_in_group("coins")
+	var coins := _coins_cache
 	for c in coins:
+		if not c: continue
 		if not c is Node2D: continue
 		if not is_instance_valid(c): continue
 		var coin = c as Node2D
@@ -970,7 +1016,7 @@ func _scan_for_parry() -> void:
 	var lo := global_position + PARRY_SCAN_BACK
 	var hi := global_position + PARRY_SCAN_FWD
 	var seen_now: Dictionary = {}
-	for h in get_tree().get_nodes_in_group("hazards"):
+	for h in _hazards_cache:
 		if not is_instance_valid(h): continue
 		if not h is Node2D: continue
 		var hp: Vector2 = (h as Node2D).global_position
@@ -1233,6 +1279,16 @@ func _enter_ghost_mode(cause: String) -> void:
 
 
 func get_local_lowest_y() -> float:
+	# The level is static and the result only depends on the player's column,
+	# so cache it per tile column instead of rescanning every solid tile every
+	# physics frame (called from _physics_process at 60Hz).
+	var col := int(global_position.x / 128.0)
+	if col != _lowest_y_cache_col:
+		_lowest_y_cache_col = col
+		_lowest_y_cache = _compute_local_lowest_y()
+	return _lowest_y_cache
+
+func _compute_local_lowest_y() -> float:
 	var player_x = global_position.x
 	var lowest_y = -999999.0
 	var found = false
@@ -1244,7 +1300,7 @@ func get_local_lowest_y() -> float:
 			var ts: TileStrip = tile
 			half_w = ts.length_tiles * ts.tile_size.x * 0.5
 			centre_x = tile.global_position.x + half_w - ts.tile_size.x * 0.5
-		if abs(centre_x - player_x) < half_w + 256.0:
+		if abs(centre_x - player_x) < half_w + 384.0:
 			if tile.global_position.y > lowest_y:
 				lowest_y = tile.global_position.y
 				found = true

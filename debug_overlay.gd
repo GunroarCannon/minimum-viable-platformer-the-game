@@ -10,6 +10,7 @@ extends CanvasLayer
 
 var _player_ref: Node = null
 var _accum: float = 0.0
+var _checklist_accum: float = 0.0
 
 func _ready() -> void:
 	layer = 200
@@ -145,13 +146,18 @@ func _process(_delta: float) -> void:
 		lines.append("Run distance: %d m" % Global.last_run_distance)
 	info_label.text = "\n".join(lines)
 
-	var cl_lines: Array[String] = []
-	for sid in SkillsDB.SKILLS.keys():
-		var d = SkillsDB.SKILLS[sid]
-		var owned = SkillsDB.is_purchased(sid)
-		var mark = "✓" if owned else "·"
-		cl_lines.append("[%s] %s" % [mark, d["name"]])
-	checklist_label.text = "\n".join(cl_lines)
+	# The skill checklist is expensive to rebuild (one lookup per skill) and
+	# barely changes during gameplay — refresh it ~1/s instead of every 0.18s.
+	_checklist_accum += _delta
+	if _checklist_accum >= 1.0:
+		_checklist_accum = 0.0
+		var cl_lines: Array[String] = []
+		for sid in SkillsDB.SKILLS.keys():
+			var d = SkillsDB.SKILLS[sid]
+			var owned = SkillsDB.is_purchased(sid)
+			var mark = "✓" if owned else "·"
+			cl_lines.append("[%s] %s" % [mark, d["name"]])
+		checklist_label.text = "\n".join(cl_lines)
 
 func _find_player() -> Node:
 	var tree = get_tree()

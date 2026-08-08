@@ -97,6 +97,22 @@ func _ready() -> void:
 	AudioManager.play_music("main_menu", 1.5)
 	AudioManager.connect_ui_clicks(self)
 
+	# Forced guide: congrats cut, then points the finger at Shop. No-ops after.
+	Onboarding.attach.call_deferred(self, "main_menu")
+	# Deferred after attach so the guide claims the screen first — StoryDB.pending()
+	# suppresses ambient cuts while Onboarding.is_active().
+	_play_pending_cut.call_deferred("menu_open")
+
+
+## Fire any ambient StoryDB scene queued for this screen.
+func _play_pending_cut(at: String) -> void:
+	var scene: Dictionary = StoryDB.pending(at)
+	if scene.is_empty(): return
+	var cut = preload("res://story_cut.gd").new()
+	get_tree().root.add_child(cut)
+	cut.play(scene.get("blocks", []), String(scene.get("mode", "black")))
+	StoryDB.mark_seen(scene)
+
 
 func _refresh_labels() -> void:
 	title_label.text = "gunroar's MVP"

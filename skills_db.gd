@@ -155,9 +155,14 @@ func _relax_forces() -> void:
 		var n := ids.size()
 		for i in range(n):
 			var a: String = ids[i]
+			if not _layout_positions.has(a):
+				continue
 			var pa: Vector2 = _layout_positions[a]
 			for j in range(i + 1, n):
 				var b: String = ids[j]
+				if not _layout_positions.has(b):
+					print("WARNING!! ", b, " position does not exist in skill tree.")
+					continue
 				var pb: Vector2 = _layout_positions[b]
 				var d: Vector2 = pa - pb
 				var dist: float = max(0.05, d.length())
@@ -179,6 +184,7 @@ func _relax_forces() -> void:
 		# so branches stay pointed outward instead of curling into a blob.
 		for sid in ids:
 			if sid == ROOT_ID: continue
+			if not _layout_positions.has(sid): continue
 			var branch: String = SKILLS[sid].get("branch", "ui")
 			var ang: float = float(BRANCH_ANGLES.get(branch, 0.0))
 			var depth: int = depth_from_root(sid)
@@ -189,6 +195,8 @@ func _relax_forces() -> void:
 		for sid in ids:
 			if sid == ROOT_ID:
 				_layout_positions[sid] = Vector2.ZERO
+				continue
+			if not _layout_positions.has(sid):
 				continue
 			var d3: Vector2 = disp[sid]
 			var dl: float = d3.length()

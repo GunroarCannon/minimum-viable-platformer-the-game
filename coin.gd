@@ -4,6 +4,11 @@ extends Area2D
 
 var _collected: bool = false
 var _t: float = 0.0
+## Coins redraw at a throttled rate: the bob/pulse is slow, so ~15fps is
+## visually identical but costs a fraction of the per-frame draw calls when
+## dozens of coins are on screen.
+const REDRAW_INTERVAL := 1.0 / 15.0
+var _redraw_timer: float = 0.0
 ## Set true while a drop-tween is running so the bob animation doesn't fight the tween.
 ## The coin draws nothing during flight and resumes bobbing once landed.
 var flying: bool = false :
@@ -30,7 +35,10 @@ func _process(delta: float) -> void:
 	_t += delta
 	rotation = sin(_t * 2.6) * 0.28
 	position.y += sin(_t * 4.0) * 0.35
-	queue_redraw()
+	_redraw_timer -= delta
+	if _redraw_timer <= 0.0:
+		_redraw_timer = REDRAW_INTERVAL
+		queue_redraw()
 
 func _draw() -> void:
 	if _collected or flying: return
