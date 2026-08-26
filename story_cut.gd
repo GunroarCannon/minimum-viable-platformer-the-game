@@ -300,4 +300,3 @@ func _close() -> void:
 		_release()
 		queue_free()
 	)
-

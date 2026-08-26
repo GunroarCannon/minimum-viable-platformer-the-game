@@ -489,4 +489,3 @@ func taunt(cause: String = "", distance: int = 0, deaths: int = 0) -> String:
 	if distance > 0 and distance >= Global.best_distance and Global.best_distance > 0:
 		return "A personal best. The bar was on the floor and you cleared it."
 	return pool[randi() % pool.size()]
-

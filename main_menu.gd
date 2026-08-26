@@ -115,7 +115,7 @@ func _play_pending_cut(at: String) -> void:
 
 
 func _refresh_labels() -> void:
-	title_label.text = "gunroar's MVP"
+	title_label.text = "the MVP"
 	subtitle_label.text = "(Minimal Viable Platformer)"
 	tokens_label.text = "★  %d  tokens" % Global.tokens
 	best_label.text = "best:  %d m" % Global.best_distance

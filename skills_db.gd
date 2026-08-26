@@ -481,14 +481,14 @@ var SKILLS: Dictionary = {
 		"desc": "Dust on landing, smoke on death, sparks on stomp.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "PT",
-		"priority": 62,
+		"priority": 72,
 	},
 	"player_sprite": {
 		"id": "player_sprite", "name": "Player Sprite",
 		"desc": "Replaces the player rectangle with proper character art.",
 		"cost": 2, "requires": ["drawn_floors"], "branch": "graphics",
 		"icon": "PX",
-		"priority": 68,
+		"priority": 78,
 	},
 	"sprite_animations": {
 		"id": "sprite_animations", "name": "Sprite Anims",
@@ -609,14 +609,14 @@ var SKILLS: Dictionary = {
 		"desc": "Each run's seed is saved so you can replay favourites.\nUnlocks the Level Library in the main menu.\nFavourite levels are never evicted. Best distances are tracked per seed.",
 		"cost": 5, "requires": ["stats_menu"], "branch": "ui",
 		"icon": "LL",
-		"priority": 62,
+		"priority": 72,
 	},
 	"stats_menu": {
 		"id": "stats_menu", "name": "Stats Menu",
 		"desc": "Unlocks the Stats screen — playtime, jumps, longest run, longest combo, deaths, and more.",
 		"cost": 2, "requires": ["ui"], "branch": "ui",
 		"icon": "ST",
-		"priority": 55,
+		"priority": 85,
 	},
 	"player_name": {
 		"id": "player_name", "name": "Player Identity",
@@ -658,7 +658,7 @@ var SKILLS: Dictionary = {
 		"desc": "Bombs use a frame-animation explosion instead of a particle poof.",
 		"cost": 2, "requires": ["enemies_advanced", "particles"], "branch": "enemies",
 		"icon": "SX",
-		"priority": 30,
+		"priority": 80,
 	},
 	"daily_level": {
 		"id": "daily_level", "name": "Daily Level",
@@ -672,7 +672,7 @@ var SKILLS: Dictionary = {
 		"desc": "Redesigns the main menu with polished layout and animations.",
 		"cost": 3, "requires": ["main_menu_extras"], "branch": "ui",
 		"icon": "HP",
-		"priority": 32,
+		"priority": 62,
 	},
 	"adaptive_sky": {
 		"id": "adaptive_sky", "name": "Adaptive Sky",
@@ -703,15 +703,15 @@ var SKILLS: Dictionary = {
 		"id": "sfx", "name": "Sound Effects",
 		"desc": "Adds footsteps, jump thuds, stomp crunches, UI clicks, and all in-game sound effects.",
 		"cost": 3, "requires": ["juice_squash"], "branch": "juice",
-		"icon": "SF",
-		"priority": 76,
+		"icon": "SFX",
+		"priority": 93,
 	},
 	"music": {
 		"id": "music", "name": "Music",
 		"desc": "Background music plays in menus, gameplay and the shop — fades between scenes.",
-		"cost": 4, "requires": ["sfx"], "branch": "juice",
+		"cost_override": 8, "requires": ["juice_squash"], "branch": "juice",
 		"icon": "MU",
-		"priority": 74,
+		"priority": 94,
 	},
 	"wind_effect": {
 		"id": "wind_effect", "name": "Wind Effect",
@@ -725,7 +725,7 @@ var SKILLS: Dictionary = {
 		"desc": "Curved bezier connections, animated pulse on active paths.",
 		"cost": 2, "requires": ["main_menu_extras"], "branch": "ui",
 		"icon": "TP",
-		"priority": 34,
+		"priority": 64,
 	},
 	"fog_cover": {
 		"id": "fog_cover", "name": "Fog Cover",
@@ -739,7 +739,7 @@ var SKILLS: Dictionary = {
 		"desc": "Brushing past an enemy triggers a brief cinematic slow-motion.\nFires 30% of the time.",
 		"cost": 3, "requires": ["impact_freeze"], "branch": "camera",
 		"icon": "NM",
-		"priority": 42,
+		"priority": 62,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
