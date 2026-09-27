@@ -67,6 +67,12 @@ var _btn_row_secondary: HBoxContainer = null # Menu / Exit
 ## Ephemeral "Copied!" toast anchored to the copy button.
 var _toast: Label = null
 
+## Rewarded-ad offer: doubles the tokens this run paid out. Sits under the stats
+## card, above the hint, so it reads as an extension of the numbers it doubles.
+var _double_btn: Button = null
+## One claim per game-over. Reset at the top of show_game_over().
+var _double_claimed: bool = false
+
 func _ready() -> void:
 	layer = 95
 	visible = false
@@ -84,6 +90,7 @@ func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 	visible = true
 	_last_tokens_awarded = tokens_awarded
 	_last_distance_m = distance_m
+	_double_claimed = false
 	var has_ui := Global.is_unlocked("ui")
 
 	# Sizing: let the ScrollWrap collapse to its content height so there's no
@@ -135,10 +142,13 @@ func show_game_over(tokens_awarded: int = 0, distance_m: int = 0) -> void:
 		_populate_seed_strip()
 		_check_and_submit_leaderboard()
 		if _stats_card: _stats_card.visible = true
+		_ensure_double_btn()
+		_refresh_double_btn()
 	else:
 		if _stats_card: _stats_card.visible = false
 		if _profile_strip: _profile_strip.visible = false
 		if _seed_strip: _seed_strip.visible = false
+		if _double_btn: _double_btn.visible = false
 
 	_style_buttons(target_w, has_ui)
 
@@ -663,6 +673,59 @@ func _pick_primary_button() -> Button:
 	if btn_retry and btn_retry.visible:
 		return btn_retry
 	return null
+
+# ─── REWARDED-AD OFFER ────────────────────────────────────────────────
+
+## Build the double-tokens button once. Placed immediately before the hint
+## label, which puts it below the stats card and seed strip and above the
+## action rows — an offer, not a primary action.
+func _ensure_double_btn() -> void:
+	if _double_btn and is_instance_valid(_double_btn):
+		return
+	_double_btn = Button.new()
+	_double_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_double_btn.custom_minimum_size = Vector2(0, 52)
+	_double_btn.add_theme_font_size_override("font_size", 20)
+	_double_btn.pressed.connect(_on_double_tokens)
+	box.add_child(_double_btn)
+	box.move_child(_double_btn, hint_label.get_index())
+
+## Shown only when there is something to double, an ad to show, and the offer
+## hasn't already been taken for this death.
+func _refresh_double_btn() -> void:
+	if _double_btn == null or not is_instance_valid(_double_btn): return
+	var offerable := _last_tokens_awarded > 0 and IAP.ads_enabled() and not _double_claimed
+	_double_btn.visible = offerable
+	_double_btn.disabled = false
+	if offerable:
+		_double_btn.text = "▶  Watch a sponsor spot  →  +%d ★" % _last_tokens_awarded
+
+func _on_double_tokens() -> void:
+	if _double_claimed or _last_tokens_awarded <= 0: return
+	_double_btn.disabled = true
+	_double_btn.text = "Loading…"
+	var bonus := _last_tokens_awarded
+	var earned: bool = await IAP.show_rewarded(IAP.PLACEMENT_DOUBLE_TOKENS)
+	# A real ad hands control to another activity; this card may be gone by now.
+	if not is_instance_valid(self) or not is_inside_tree(): return
+	if not earned:
+		AudioManager.play("ui_glass", -4.0, 0.05)
+		_double_btn.text = "No ad available right now"
+		await get_tree().create_timer(2.0).timeout
+		if is_instance_valid(_double_btn):
+			_refresh_double_btn()
+		return
+	_double_claimed = true
+	Global.grant_ad_bonus_tokens(bonus)
+	AudioManager.play("ui_buy", 0.0, 0.04)
+	_double_btn.visible = false
+	# Restate the payout so the reward is visible where the original number was.
+	tokens_earned_label.text = "+%d ★   |   %d m" % [_last_tokens_awarded + bonus, _last_distance_m]
+	if _stat_val_tokens and is_instance_valid(_stat_val_tokens):
+		_stat_val_tokens.text = "+%d ★" % (_last_tokens_awarded + bonus)
+	# The shop button prints the live token count in its label.
+	if btn_shop and is_instance_valid(btn_shop):
+		btn_shop.text = "Shop (%d ★)" % Global.tokens
 
 # ─── BUTTON HANDLERS ──────────────────────────────────────────────────
 

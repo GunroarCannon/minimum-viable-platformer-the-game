@@ -27,6 +27,7 @@ DebugOverlay="*res://debug_overlay.gd"
 ComboSystem="*res://combo_system.gd"
 LeaderboardService="*res://leaderboard_service.gd"
 AudioManager="*res://audio_manager.gd"
+IAP="*res://iap_manager.gd"
 
 [display]
 

@@ -72,8 +72,10 @@ func _process(delta: float) -> void:
 	if not player:
 		# Find player dynamically
 		var parent = get_parent()
-		if parent and parent.has_node("Player"):
-			player = parent.get_node("Player")
+		if Global.player:
+			player =  Global.player
+		#if parent and parent.has_node("Player"):
+			#player = parent.get_node("Player")
 		return
 		
 	match state:

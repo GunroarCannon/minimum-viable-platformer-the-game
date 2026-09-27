@@ -74,8 +74,12 @@ func _process(delta: float) -> void:
 
 	if not player:
 		var parent = get_parent()
-		if parent and parent.has_node("Player"):
-			player = parent.get_node("Player")
+		
+		if Global.player:
+			player =  Global.player
+			
+		#if parent and parent.has_node("Player"):
+			#player = parent.get_node("Player")
 			if player:
 				death_y_limit = player.get("death_y_limit")
 		return

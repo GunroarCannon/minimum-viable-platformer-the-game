@@ -385,7 +385,7 @@ var SKILLS: Dictionary = {
 		"desc": "Camera zooms out over wide gaps so you can see what's coming.",
 		"cost": 3, "requires": ["camera_shake", "parallax"], "branch": "camera",
 		"icon": "DZ",
-		"priority": 55,
+		"priority": 75,
 	},
 
 	# ═══════════════════════════════════════════════════════════════════
@@ -768,7 +768,7 @@ var SKILLS: Dictionary = {
 		"desc": "Press Jump within 0.15 s of an enemy hit to PARRY it.\nThe enemy bounces back, you get your jump back, and the combo multiplier spikes.\nVery intentional game design decision.",
 		"cost": 4, "requires": ["wall_jump"], "branch": "moves",
 		"icon": "PA",
-		"priority": 56,
+		"priority": 46,
 	},
 	"coin_magnet": {
 		"id": "coin_magnet", "name": "Coin Magnet",

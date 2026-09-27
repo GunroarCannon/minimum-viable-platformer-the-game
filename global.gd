@@ -51,6 +51,17 @@ var unlocked: Dictionary = {}
 ## Defaults to true (enabled) for all keys not present.
 var feature_overrides: Dictionary = {}
 
+## Features on loan for a single run, earned by watching a rewarded ad in the
+## shop. Read by is_unlocked() exactly like a real purchase, then cleared when
+## the run ends. Persisted so a crash between the ad and the run doesn't eat
+## something the player already paid attention for.
+var trial_unlocks: Dictionary = {}
+
+## Last-known RevenueCat entitlement state, mirrored out of IAP so a cold start
+## with no network still honours a purchase. IAP owns this — never write it from
+## anywhere else.
+var iap_entitlements: Dictionary = {}
+
 ## True the first time the player has died at least once.
 var first_death_done: bool = false
 
@@ -235,6 +246,10 @@ static func code_to_seed(code: String) -> int:
 
 const META_SAVE_PATH := "user://meta.dat"
 const TOKEN_PER_TILES := 25       # 1 token per 25 tiles ran
+## End-of-run bonus granted by the Publisher Deal IAP. Applied alongside the
+## fast-mode and enemy-tier bonuses in on_player_death() rather than inside
+## add_tokens_flat(), so a coin is still worth exactly the 1 its popup claims.
+const PUBLISHER_TOKEN_BONUS := 0.50
 const FIRST_DEATH_BONUS := 1      # free token on first death so player can buy UI
 
 
@@ -297,6 +312,8 @@ func save_state() -> void:
 		"tokens": tokens,
 		"unlocked": unlocked,
 		"feature_overrides": feature_overrides,
+		"trial_unlocks": trial_unlocks,
+		"iap_entitlements": iap_entitlements,
 		"first_death_done": first_death_done,
 		"tutorial_seen": tutorial_seen,
 		"best_distance": best_distance,
@@ -324,6 +341,8 @@ func load_state() -> void:
 	tokens = int(blob.get("tokens", 0))
 	unlocked = blob.get("unlocked", {})
 	feature_overrides = blob.get("feature_overrides", {})
+	trial_unlocks = blob.get("trial_unlocks", {})
+	iap_entitlements = blob.get("iap_entitlements", {})
 	first_death_done = bool(blob.get("first_death_done", false))
 	tutorial_seen = bool(blob.get("tutorial_seen", false))
 	best_distance = int(blob.get("best_distance", 0))
@@ -378,7 +397,7 @@ func is_tutorial_run() -> bool:
 	return not tutorial_seen
 
 func is_unlocked(feature_key: String) -> bool:
-	var owned: bool = debug_toggles.get("unlock_all", false) or bool(unlocked.get(feature_key, false))
+	var owned: bool = debug_toggles.get("unlock_all", false) 			or bool(unlocked.get(feature_key, false)) 			or bool(trial_unlocks.get(feature_key, false))
 	if is_tutorial_run():
 		var fake_unlocks := ["hud", "pause_menu", "juice_squash", "hit_flash", "impact_freeze", "motion_trail", "footstep_dust", "tear_effects", "blood_splats", "blood_marks", "camera_shake", "dynamic_zoom", "vignette",  "color_grading", "crt_filter", "wobble_shader", "double_jump", "wall_jump", "drawn_floors", "foliage", "particles", "player_sprite", "sprite_animations", "outline", "parallax", "clouds", "sky_color", "enemies_basic", "enemy_sprites", "enemies_more", "enemies_advanced", "smashers", "leaderboard", "fast_mode", "font_select", "sprite_explosion",  "adaptive_sky", "combo_system", "combo_bounce", "fog_cover", "near_miss_slowmo", "sfx", "music", "wind_effect"]
 		# ["hud", "player_sprite", "sprite_animations", "particles", "juice_squash", "double_jump", "sprint", "enemies_basic", "enemies_more", "enemies_advanced", "procgen", "color_grading", "vignette", "fog_cover", "dynamic_zoom", "camera_shake"]
@@ -395,6 +414,31 @@ func is_unlocked(feature_key: String) -> bool:
 func gfx(feature_key: String) -> bool:
 	if use_primitives: return false
 	return is_unlocked(feature_key)
+
+## True when this feature is only active because of a rewarded-ad trial — the
+## shop uses it to keep showing the real price instead of claiming OWNED.
+func is_trial_unlock(feature_key: String) -> bool:
+	return bool(trial_unlocks.get(feature_key, false)) and not bool(unlocked.get(feature_key, false))
+
+## Lend a feature for one run. Cleared by on_player_death().
+func grant_trial_unlock(feature_key: String) -> void:
+	if bool(unlocked.get(feature_key, false)): return
+	trial_unlocks[feature_key] = true
+	stat_add("trial_unlocks_watched", 1)
+	save_state()
+
+func clear_trial_unlocks() -> void:
+	if trial_unlocks.is_empty(): return
+	trial_unlocks = {}
+	save_state()
+
+## Does the player own the Publisher Deal? Asked through IAP so the entitlement
+## has one owner, with the persisted mirror as the offline fallback.
+func owns_publisher_deal() -> bool:
+	var iap = get_node_or_null("/root/IAP")
+	if iap and iap.has_method("owns_publisher_deal"):
+		return iap.owns_publisher_deal()
+	return bool(iap_entitlements.get("publisher_deal", false))
 
 func grant(feature_key: String) -> void:
 	if not unlocked.get(feature_key, false):
@@ -446,6 +490,17 @@ func add_tokens_flat(n: int) -> void:
 	# to force a full save blob to disk.
 	save_state_deferred()
 
+## Credit tokens earned by watching a rewarded ad. Deliberately does NOT touch
+## current_run_score: the run is already over and its score has been compared
+## against best_score_ever, so inflating it afterwards would put a number on the
+## board that no run actually scored.
+func grant_ad_bonus_tokens(n: int) -> void:
+	if n <= 0: return
+	tokens += n
+	stat_add("total_points_earned", n)
+	stat_add("ad_bonus_tokens", n)
+	save_state()
+
 ## Adds to the current-run score. Called by ComboSystem when tokens are earned
 ## and by stomp-bonus paths. Does not persist until run-end.
 func add_run_score(n: int) -> void:
@@ -474,6 +529,9 @@ func reset_progress() -> void:
 	tokens = 0
 	unlocked = {}
 	feature_overrides = {}
+	trial_unlocks = {}
+	# iap_entitlements is deliberately NOT cleared — resetting your own progress
+	# must never revoke a real purchase.
 	first_death_done = false
 	tutorial_seen = false
 	story_seen = {}
@@ -541,6 +599,13 @@ func on_player_death(distance_tiles: int) -> int:
 		if is_unlocked(ekey):
 			enemy_bonus += 0.20
 	awarded = int(round(awarded * enemy_bonus))
+	# Publisher Deal (IAP): permanent end-of-run bounty. Deliberately a
+	# multiplier on earnings rather than a skill-tree skip — buying your way
+	# past the progression would kill the joke the game is built on.
+	if owns_publisher_deal():
+		awarded = int(round(awarded * (1.0 + PUBLISHER_TOKEN_BONUS)))
+	# A rewarded-ad trial is worth exactly one run, and this is the end of it.
+	clear_trial_unlocks()
 	if distance_tiles > best_distance:
 		best_distance = distance_tiles
 	tokens += awarded

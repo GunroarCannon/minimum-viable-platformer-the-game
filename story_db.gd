@@ -112,9 +112,10 @@ const SCENES: Array = [
 	"id": "guide_buy_ui", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "Right. It took the game and left you the physics. Generous, technically."},
-		{"who": "narrator", "text": "You died, so you were paid. That is the entire economy. Dying is the job."},
 		{"who": "purple",   "text": "You cannot buy back what is mine."},
-		{"who": "narrator", "text": "You can, actually. It kept the receipts. Start with the interface — you'll want menus before you want anything nice."},
+		{"who": "narrator", "text": "You died, so you were paid. That is the entire economy. Dying is the job."},
+		# DROPPED — uncomment to restore narrator closer:
+		# {"who": "narrator", "text": "You can, actually. It kept the receipts. Start with the interface — you'll want menus before you want anything nice."},
 	],
 },
 {
@@ -160,7 +161,8 @@ const SCENES: Array = [
 	"when": {"deaths_at": [3]},
 	"blocks": [
 		{"who": "narrator", "text": "Three deaths. Statistically, that is a trend."},
-		{"who": "princess", "text": "or a HOBBY! some people collect stamps"},
+		# DROPPED — uncomment to restore:
+		# {"who": "princess", "text": "or a HOBBY! some people collect stamps"},
 	],
 },
 {
@@ -168,7 +170,8 @@ const SCENES: Array = [
 	"when": {"deaths_at": [5]},
 	"blocks": [
 		{"who": "purple",   "text": "Five. I have stopped watching. It replays them for me."},
-		{"who": "narrator", "text": "I do not replay them. I file them. There is a difference and it is my whole personality."},
+		# DROPPED — uncomment to restore:
+		# {"who": "narrator", "text": "I do not replay them. I file them. There is a difference and it is my whole personality."},
 	],
 },
 {
@@ -176,9 +179,10 @@ const SCENES: Array = [
 	"when": {"deaths_at": [7]},
 	"blocks": [
 		{"who": "narrator", "text": "Seven. Lucky number. Not here. Here it is just seven."},
-		{"who": "soul",     "text": "he told the last one it was lucky"},
-		{"who": "narrator", "text": "The last one had different circumstances."},
-		{"who": "soul",     "text": "the last one had the same circumstances"},
+		# DROPPED — uncomment to restore full exchange:
+		# {"who": "soul",     "text": "he told the last one it was lucky"},
+		# {"who": "narrator", "text": "The last one had different circumstances."},
+		# {"who": "soul",     "text": "the last one had the same circumstances"},
 	],
 },
 {
@@ -186,8 +190,9 @@ const SCENES: Array = [
 	"when": {"deaths_at": [10]},
 	"blocks": [
 		{"who": "sponsor",  "text": "TEN DEATHS! You have unlocked: nothing. But you have unlocked it TEN TIMES."},
-		{"who": "narrator", "text": "Round numbers bring it out. Like a fly to a window."},
-		{"who": "princess", "text": "double digits!! i baked something. i can't give it to you. i can't reach"},
+		# DROPPED — uncomment to restore:
+		# {"who": "narrator", "text": "Round numbers bring it out. Like a fly to a window."},
+		# {"who": "princess", "text": "double digits!! i baked something. i can't give it to you. i can't reach"},
 	],
 },
 {
@@ -195,7 +200,8 @@ const SCENES: Array = [
 	"when": {"deaths_at": [15]},
 	"blocks": [
 		{"who": "purple",   "text": "Fifteen. You are wearing a groove in my floor."},
-		{"who": "narrator", "text": "It is not its floor. It is a rented asset. I have said this."},
+		# DROPPED — uncomment to restore narrator pushback:
+		# {"who": "narrator", "text": "It is not its floor. It is a rented asset. I have said this."},
 		{"who": "purple",   "text": "The rent is you."},
 	],
 },
@@ -205,7 +211,8 @@ const SCENES: Array = [
 	"blocks": [
 		{"who": "narrator", "text": "Twenty-one. You are legally an adult in most of this level."},
 		{"who": "princess", "text": "he's so proud of that one. he's been saving it since eleven"},
-		{"who": "narrator", "text": "I was not saving it."},
+		# DROPPED — uncomment to restore narrator denial:
+		# {"who": "narrator", "text": "I was not saving it."},
 	],
 },
 {
@@ -213,9 +220,10 @@ const SCENES: Array = [
 	"when": {"deaths_at": [30]},
 	"blocks": [
 		{"who": "narrator", "text": "Thirty. At this point the deaths are the content and the running is the loading screen."},
-		{"who": "soul",     "text": "he says that to everyone. he said it to me. i believed it"},
-		{"who": "purple",   "text": "Quiet."},
-		{"who": "system",   "text": "one voice removed from the transcript"},
+		# DROPPED — uncomment to restore full exchange:
+		# {"who": "soul",     "text": "he says that to everyone. he said it to me. i believed it"},
+		# {"who": "purple",   "text": "Quiet."},
+		# {"who": "system",   "text": "one voice removed from the transcript"},
 	],
 },
 {
@@ -252,17 +260,19 @@ const SCENES: Array = [
 	"when": {"distance_at_least": 600},
 	"blocks": [
 		{"who": "princess", "text": "you went PAST the bit i live in! nobody goes past the bit i live in"},
-		{"who": "narrator", "text": "There is no bit it lives in. It is a text style."},
-		{"who": "princess", "text": "rude. accurate. rude"},
+		# DROPPED — uncomment to restore full exchange:
+		# {"who": "narrator", "text": "There is no bit it lives in. It is a text style."},
+		# {"who": "princess", "text": "rude. accurate. rude"},
 	],
 },
 {
 	"id": "dist_1200", "at": "death", "mode": "black",
 	"when": {"distance_at_least": 1200},
 	"blocks": [
-		{"who": "purple",   "text": "Far. Too far. I did not build past here."},
-		{"who": "narrator", "text": "It did not build any of it. It found it. Like a hermit crab with opinions."},
 		{"who": "soul",     "text": "keep going. there's an edge. i'd like someone to see it"},
+		# DROPPED — uncomment to restore:
+		# {"who": "purple",   "text": "Far. Too far. I did not build past here."},
+		# {"who": "narrator", "text": "It did not build any of it. It found it. Like a hermit crab with opinions."},
 	],
 },
 
@@ -272,8 +282,10 @@ const SCENES: Array = [
 	"when": {"purchased": "procgen"},
 	"blocks": [
 		{"who": "purple",   "text": "You put the ground back. I removed that personally."},
-		{"who": "narrator", "text": "It removed it by unplugging one node. It talks about it like heavy labour."},
-		{"who": "princess", "text": "there's SO MUCH of it now. it just keeps happening!"},
+		# DROPPED — uncomment to restore:
+		# {"who": "narrator", "text": "It removed it by unplugging one node. It talks about it like heavy labour."},
+		# {"who": "princess", "text": "there's SO MUCH of it now. it just keeps happening!"},
+		{"who": "purple",   "text": "It talks about it like heavy labour."},
 	],
 },
 {
@@ -282,7 +294,8 @@ const SCENES: Array = [
 	"blocks": [
 		{"who": "purple",   "text": "You bought my staff back. With my money."},
 		{"who": "narrator", "text": "Technically your money. Earned by dying. It is a closed loop and everyone in it is tired."},
-		{"who": "soul",     "text": "the loop isn't closed. i got out. this is out"},
+		# DROPPED — uncomment to restore soul interjection:
+		# {"who": "soul",     "text": "the loop isn't closed. i got out. this is out"},
 	],
 },
 {
@@ -290,8 +303,9 @@ const SCENES: Array = [
 	"when": {"purchased": "coins"},
 	"blocks": [
 		{"who": "sponsor",  "text": "CURRENCY RESTORED! Shiny objects now spawn in the world. Collect them. Do not ask where they come from."},
-		{"who": "purple",   "text": "They come from me."},
 		{"who": "narrator", "text": "They come from a spawn table. Everyone here is very dramatic about arrays."},
+		# DROPPED — uncomment to restore:
+		# {"who": "purple",   "text": "They come from me."},
 	],
 },
 {
@@ -299,7 +313,8 @@ const SCENES: Array = [
 	"when": {"purchased": "leaderboard"},
 	"blocks": [
 		{"who": "narrator", "text": "You bought the leaderboard. Now strangers can see exactly how you're doing."},
-		{"who": "princess", "text": "other people?? other people exist?? put me on it. put my name on it"},
+		# DROPPED — uncomment to restore princess excitement:
+		# {"who": "princess", "text": "other people?? other people exist?? put me on it. put my name on it"},
 		{"who": "purple",   "text": "Rebuild it all if you like. I only ever needed the part that keeps score."},
 	],
 },
@@ -311,7 +326,8 @@ const SCENES: Array = [
 	"blocks": [
 		{"who": "narrator", "text": "Oh. You're back. No, it's fine. I kept everything exactly where you left it, because I can't move."},
 		{"who": "princess", "text": "I MISSED YOU. he did too. he arranged the tiles"},
-		{"who": "narrator", "text": "I did not arrange the tiles."},
+		# DROPPED — uncomment to restore narrator denial:
+		# {"who": "narrator", "text": "I did not arrange the tiles."},
 	],
 },
 {
@@ -319,21 +335,28 @@ const SCENES: Array = [
 	"when": {"unspent_tokens_at_least": 20},
 	"blocks": [
 		{"who": "narrator", "text": "That is a substantial pile of tokens you are not spending. No pressure. It's only the world."},
-		{"who": "sponsor",  "text": "SAVING IS A VALID STRATEGY! Saving is also how the last one ended. But it is VALID!"},
 	],
 },
 {
 	# Nudge toward the shop once there's real money on the table. Low priority so a
-	# death-count milestone always wins the slot, and once=false so it can come back
-	# in a later session if the tokens are still sitting there.
-	"id": "spend_reminder", "at": "death", "mode": "scrim", "once": false,
+	# death-count milestone always wins the slot. Fires once, then the late version
+	# re-arms much later so the player gets a second nudge after many more deaths.
+	"id": "spend_reminder", "at": "death", "mode": "scrim", "once": true,
 	"priority": -5,
 	"when": {"unspent_tokens_at_least": 10, "requires_unlocked": "ui",
 		"no_guide_pending": true},
 	"blocks": [
 		{"who": "narrator", "text": "You are carrying ten tokens around a world that does not have a shop in it yet, because you haven't been to the shop."},
 		{"who": "princess", "text": "SPEND THEM! spend them on something SILLY! spend them on ME"},
-		{"who": "narrator", "text": "The Shop button is on this screen. It has been on this screen the whole time."},
+	],
+},
+{
+	"id": "spend_reminder_late", "at": "death", "mode": "scrim", "once": false,
+	"priority": -5,
+	"when": {"unspent_tokens_at_least": 10, "deaths_at_least": 30, "requires_unlocked": "ui",
+		"no_guide_pending": true},
+	"blocks": [
+		{"who": "narrator", "text": "You are still carrying those tokens. The shop has been there the entire time. I can see it from here."},
 	],
 },
 
@@ -343,7 +366,8 @@ const SCENES: Array = [
 	"id": "guide2_intro", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "You have money now. Quite a lot of it, for someone whose only income is dying."},
-		{"who": "purple",   "text": "It runs. It lands. It is not pleasant to look at."},
+		# DROPPED — uncomment to restore purple interjection:
+		# {"who": "purple",   "text": "It runs. It lands. It is not pleasant to look at."},
 		{"who": "narrator", "text": "He means the game has no feel. Everything moves, nothing lands. Let's fix that part."},
 		{"who": "narrator", "text": "Shop. I'll point."},
 	],

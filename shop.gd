@@ -27,6 +27,13 @@ var _recommend_cycle: Array = []
 var _recommend_idx: int = -1
 var _recommend_state_sig: String = ""
 
+## "Get tokens" — opens the RevenueCat paywall. Lives in the top bar next to the
+## token count, which is exactly where a player looks when they are short.
+var _store_btn: Button = null
+## "Watch to try" — lends the selected skill for one run. Appended to the detail
+## panel, shown only for a skill the player can't afford yet.
+var _d_trial_btn: Button = null
+
 func _ready() -> void:
 	layer = 95
 	back_btn.pressed.connect(_on_back)
@@ -47,8 +54,39 @@ func _ready() -> void:
 	top_bar.move_child(_recommend_btn, tokens_label.get_index())
 	UITheme.apply_current(_recommend_btn)
 
+	# Store button — the paywall entry point, sitting immediately left of the
+	# token count so "I need more tokens" and "here is how" are the same glance.
+	_store_btn = Button.new()
+	_store_btn.text = "＋ Tokens"
+	_store_btn.custom_minimum_size = Vector2(150, 0)
+	_store_btn.add_theme_font_size_override("font_size", 22)
+	_store_btn.pressed.connect(_on_store)
+	# Hidden where no store can ever exist (web/desktop release builds), so a
+	# web player never meets a button whose only reply is "unavailable".
+	# Debug builds keep it visible so the layout is checkable on PC.
+	_store_btn.visible = IAP.available or OS.is_debug_build()
+	top_bar.add_child(_store_btn)
+	top_bar.move_child(_store_btn, tokens_label.get_index())
+	UITheme.apply_current(_store_btn)
+
 	# Create the active-toggle checkbox and append it to the detail VBox.
 	var detail_vbox = $Root/Body/Detail/Scroll/V
+
+	# Rewarded-ad trial button, appended below Buy. Visibility is owned by
+	# _refresh_detail — it only appears on a skill that is unaffordable but
+	# otherwise ready to buy.
+	_d_trial_btn = Button.new()
+	_d_trial_btn.text = "▶ Watch to try for one run"
+	_d_trial_btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_d_trial_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_d_trial_btn.visible = false
+	_d_trial_btn.pressed.connect(_on_trial)
+	detail_vbox.add_child(_d_trial_btn)
+	detail_vbox.move_child(_d_trial_btn, d_buy.get_index() + 1)
+	UITheme.apply_current(_d_trial_btn)
+
+	IAP.entitlements_changed.connect(_refresh)
+	IAP.purchase_succeeded.connect(func(_pid: String): _refresh())
 	_d_toggle = CheckBox.new()
 	_d_toggle.text = "Feature active"
 	_d_toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -190,6 +228,7 @@ func _refresh_detail() -> void:
 		d_buy.disabled = true
 		if _d_toggle: _d_toggle.visible = false
 		if _d_toggle_hint: _d_toggle_hint.visible = false
+		if _d_trial_btn: _d_trial_btn.visible = false
 		return
 	var d = SkillsDB.SKILLS[sid]
 	var cost := SkillsDB.compute_cost(sid)
@@ -202,6 +241,9 @@ func _refresh_detail() -> void:
 	var purchased := SkillsDB.is_purchased(sid) or unlock_all
 	var prereq := SkillsDB.prereqs_met(sid) or unlock_all
 	var affordable := SkillsDB.can_afford(sid) or unlock_all
+	# Only the "can't afford it yet" branch offers the ad trial, so default off
+	# and let that one branch opt back in.
+	if _d_trial_btn: _d_trial_btn.visible = false
 
 	if purchased:
 		d_status.text = "OWNED"
@@ -235,12 +277,21 @@ func _refresh_detail() -> void:
 		if _d_toggle: _d_toggle.visible = false
 		if _d_toggle_hint: _d_toggle_hint.visible = false
 	elif not affordable:
-		d_status.text = "Not enough tokens"
-		d_status.modulate = Color(0.65, 0.45, 0.20)
+		var fkey_trial = SkillsDB.get_feature_key(sid)
+		if Global.is_trial_unlock(fkey_trial):
+			d_status.text = "On loan for your next run"
+			d_status.modulate = Color(0.30, 0.55, 0.70)
+		else:
+			d_status.text = "Not enough tokens"
+			d_status.modulate = Color(0.65, 0.45, 0.20)
 		d_buy.text = "Need %d ★" % cost
 		d_buy.disabled = true
 		if _d_toggle: _d_toggle.visible = false
 		if _d_toggle_hint: _d_toggle_hint.visible = false
+		# Offer a one-run taste of what they're saving up for. Genuinely
+		# additive: the ad hands over the feature instead of interrupting.
+		if _d_trial_btn:
+			_d_trial_btn.visible = IAP.ads_enabled() and not Global.is_trial_unlock(fkey_trial)
 	else:
 		d_status.text = "Available"
 		d_status.modulate = Color(0.18, 0.14, 0.10)
@@ -262,6 +313,47 @@ func _refresh_detail() -> void:
 		tw.tween_property(d_buy, "rotation", 0.05, 0.05)
 		tw.tween_property(d_buy, "rotation", -0.05, 0.05)
 		tw.tween_property(d_buy, "rotation", 0.0, 0.05)
+
+## Paywall entry. present_paywall() is RevenueCat's native UI, so there is no
+## in-engine paywall to keep in sync — see for_hackathon.md §4.
+func _on_store() -> void:
+	if not IAP.available:
+		_flash_title("Store unavailable on this build")
+		return
+	IAP.present_paywall()
+
+## Rewarded-ad trial for the selected skill. Nothing is granted until the ad
+## actually reports completion — never on the button press.
+func _on_trial() -> void:
+	var sid: String = tree_view.selected_id()
+	if sid == "": return
+	if not IAP.ads_enabled():
+		_flash_title("No ad available right now")
+		return
+	_d_trial_btn.disabled = true
+	var fkey = SkillsDB.get_feature_key(sid)
+	var earned: bool = await IAP.show_rewarded(IAP.PLACEMENT_SKILL_TRIAL)
+	# The scene can be gone by the time a real ad returns.
+	if not is_instance_valid(self) or not is_inside_tree(): return
+	if not earned:
+		AudioManager.play("ui_glass", -4.0, 0.05)
+		_d_trial_btn.disabled = false
+		_flash_title("No ad available right now")
+		return
+	Global.grant_trial_unlock(fkey)
+	AudioManager.play("ui_buy", 0.0, 0.04)
+	_d_trial_btn.disabled = false
+	# _refresh() rewrites the title, so it has to land before the flash message.
+	_refresh()
+	_flash_title("%s is yours for one run!" % SkillsDB.SKILLS[sid]["name"])
+
+## Borrow the title label for a transient message, then put it back. The shop
+## has no toast widget and this screen is too busy to earn one.
+func _flash_title(msg: String) -> void:
+	title_label.text = msg
+	await get_tree().create_timer(2.2).timeout
+	if is_instance_valid(title_label):
+		title_label.text = "Skill Tree"
 
 func _on_toggle_active(pressed: bool) -> void:
 	var sid: String = tree_view.selected_id()

@@ -154,8 +154,8 @@ func die(torn: bool = false, impact_vel = Vector2.ZERO, instant_shatter: bool = 
 		poof.spread = 180.0
 		poof.initial_velocity_min = 80.0
 		poof.initial_velocity_max = 280.0
-		poof.scale_amount_min = 8.0
-		poof.scale_amount_max = 20.0
+		poof.scale_amount_min = 1.3
+		poof.scale_amount_max = 3.2
 		poof.color = Color(0.9, 0.9, 0.9)
 		# Party Mode unlock: death bursts into multicoloured confetti.
 		if Global.is_unlocked("party_death"):

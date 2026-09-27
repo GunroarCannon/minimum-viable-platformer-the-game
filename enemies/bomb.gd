@@ -150,8 +150,8 @@ func _apply_explosion_knockback(radius: float) -> void:
 		poof.spread = 180.0
 		poof.initial_velocity_min = 200.0
 		poof.initial_velocity_max = 600.0
-		poof.scale_amount_min = 10.0
-		poof.scale_amount_max = 40.0
+		poof.scale_amount_min = 2.0
+		poof.scale_amount_max = 6.5
 		poof.color = Color(1.0, 0.4, 0.0)
 		get_parent().add_child(poof)
 		poof.global_position = global_position

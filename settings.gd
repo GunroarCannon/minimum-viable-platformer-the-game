@@ -11,6 +11,9 @@ extends CanvasLayer
 @onready var unlock_all_cb: CheckBox = $Root/Panel/Scroll/V/UnlockAllRow/CheckBox
 @onready var reset_btn: Button = $Root/Panel/Scroll/V/ResetButton
 
+## Restore Purchases button — kept around so its label can double as status text.
+var _restore_btn: Button = null
+
 func _ready() -> void:
 	layer = 95
 	back_btn.pressed.connect(_on_back)
@@ -140,9 +143,53 @@ func _ready() -> void:
 				_apply_collisions()
 		)
 
+	_add_purchase_rows(vbox)
+
 	UITheme.apply_current(self)
 	_apply_audio()
 	AudioManager.connect_ui_clicks(self)
+
+## Restore Purchases and Manage Subscription. Both stores require these to be
+## reachable from inside the app, so they are always built — the handlers report
+## "unavailable" rather than the rows silently vanishing on a storeless build.
+func _add_purchase_rows(parent: VBoxContainer) -> void:
+	_restore_btn = _add_button_row(parent, "Purchases", "Restore Purchases")
+	_restore_btn.pressed.connect(_on_restore)
+	var manage_btn := _add_button_row(parent, "Subscription", "Manage Subscription")
+	manage_btn.pressed.connect(func(): IAP.manage_subscriptions())
+
+func _on_restore() -> void:
+	if not IAP.available:
+		_restore_btn.text = "Store unavailable"
+		await get_tree().create_timer(2.0).timeout
+		if is_instance_valid(_restore_btn): _restore_btn.text = "Restore Purchases"
+		return
+	_restore_btn.disabled = true
+	_restore_btn.text = "Restoring…"
+	IAP.restore()
+	var ok: bool = await IAP.restore_finished
+	if not is_instance_valid(_restore_btn): return
+	_restore_btn.disabled = false
+	_restore_btn.text = "Restored" if ok else "Nothing to restore"
+	await get_tree().create_timer(2.0).timeout
+	if is_instance_valid(_restore_btn): _restore_btn.text = "Restore Purchases"
+
+## Label + button, matching the label/control shape of the checkbox rows above.
+func _add_button_row(parent: VBoxContainer, label_text: String, btn_text: String) -> Button:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	var lbl := Label.new()
+	lbl.custom_minimum_size = Vector2(180, 0)
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.text = label_text
+	row.add_child(lbl)
+	var btn := Button.new()
+	btn.text = btn_text
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.add_theme_font_size_override("font_size", 20)
+	row.add_child(btn)
+	parent.add_child(row)
+	return btn
 
 func _list_fonts() -> Array:
 	return SkillsDB.list_font_files()

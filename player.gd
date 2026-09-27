@@ -404,8 +404,8 @@ func _setup_footstep_dust() -> void:
 	_foot_dust.gravity = Vector2(0, 240)
 	_foot_dust.initial_velocity_min = 60.0
 	_foot_dust.initial_velocity_max = 160.0
-	_foot_dust.scale_amount_min = 3.5
-	_foot_dust.scale_amount_max = 9.0
+	_foot_dust.scale_amount_min = 0.7
+	_foot_dust.scale_amount_max = 1.8
 	_foot_dust.color = Color(0.85, 0.74, 0.55, 0.8)
 	_foot_dust.position = Vector2(0, 52)
 	add_child(_foot_dust)
@@ -836,8 +836,8 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 			poof.gravity = Vector2(0, 300)
 			poof.initial_velocity_min = 150.0
 			poof.initial_velocity_max = 400.0
-			poof.scale_amount_min = 6.0
-			poof.scale_amount_max = 18.0
+			poof.scale_amount_min = 1.0
+			poof.scale_amount_max = 2.6
 			poof.color = Color(0.4, 0.8, 1.0)
 			get_parent().add_child(poof)
 			poof.global_position = global_position

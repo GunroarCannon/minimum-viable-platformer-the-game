@@ -14,11 +14,16 @@ var _notifier: VisibleOnScreenNotifier2D = null
 ## dozens of coins are on screen.
 const REDRAW_INTERVAL := 1.0 / 15.0
 var _redraw_timer: float = 0.0
+## Frame-animated coin art, used instead of the drawn circle once sprite art is
+## unlocked. Null on the primitive path, and _draw() stays empty when it exists.
+var _anim: AnimatedSprite2D = null
 ## Set true while a drop-tween is running so the bob animation doesn't fight the tween.
 ## The coin draws nothing during flight and resumes bobbing once landed.
 var flying: bool = false :
 	set(v):
 		flying = v
+		if _anim != null:
+			_anim.visible = not v
 		if not v:
 			queue_redraw()
 
@@ -34,6 +39,7 @@ func _ready() -> void:
 	area_entered.connect(_on_area_entered)
 	add_to_group("coins")
 	z_index = 5
+	_setup_sprite()
 
 	_notifier = VisibleOnScreenNotifier2D.new()
 	_notifier.rect = Rect2(-48, -48, 96, 96)
@@ -45,15 +51,42 @@ func _ready() -> void:
 	# once for coins that spawn already on camera.
 	_sync_visibility.call_deferred()
 
+## Swap the hand-drawn circle for the 8-frame spin once sprite art is unlocked.
+## Falls back to _draw() if the frames are missing so a bad asset can't make
+## coins invisible.
+func _setup_sprite() -> void:
+	if not Global.gfx("player_sprite"): return
+	var frames := SpriteFrames.new()
+	frames.add_animation("spin")
+	for f in range(8):
+		var tex: Texture2D = load("res://assets/coin-animated/BIG_000%d_Capa-%d.png" % [f, f + 1])
+		if tex:
+			frames.add_frame("spin", tex)
+	if frames.get_frame_count("spin") == 0:
+		return
+	frames.set_animation_speed("spin", 12.0)
+	frames.set_animation_loop("spin", true)
+	_anim = AnimatedSprite2D.new()
+	_anim.sprite_frames = frames
+	# Source frames are 82x84; the drawn coin reads as a ~48px disc, so match it.
+	_anim.scale = Vector2(0.6, 0.6)
+	_anim.visible = not flying
+	add_child(_anim)
+	_anim.play("spin")
+
 func _wake() -> void:
 	if _collected: return
 	set_process(true)
 	set_deferred("monitoring", true)
+	if _anim != null:
+		_anim.play("spin")
 	queue_redraw()
 
 func _sleep() -> void:
 	set_process(false)
 	set_deferred("monitoring", false)
+	if _anim != null:
+		_anim.pause()
 
 func _sync_visibility() -> void:
 	if _collected: return
@@ -65,13 +98,15 @@ func _process(delta: float) -> void:
 	_t += delta
 	rotation = sin(_t * 2.6) * 0.28
 	position.y += sin(_t * 4.0) * 0.35
+	# The sprite spins on its own — only the primitive coin needs redraws.
+	if _anim != null: return
 	_redraw_timer -= delta
 	if _redraw_timer <= 0.0:
 		_redraw_timer = REDRAW_INTERVAL
 		queue_redraw()
 
 func _draw() -> void:
-	if _collected or flying: return
+	if _collected or flying or _anim != null: return
 	var r := 24.0 + sin(_t * 6.0) * 1.5
 	draw_circle(Vector2(0, 3), r, Color(0, 0, 0, 0.25))
 	draw_circle(Vector2.ZERO, r, Color(0.95, 0.78, 0.20))
@@ -110,8 +145,8 @@ func _collect() -> void:
 	p.gravity = Vector2(0, 380)
 	p.initial_velocity_min = 220.0
 	p.initial_velocity_max = 460.0
-	p.scale_amount_min = 4.0
-	p.scale_amount_max = 10.0
+	p.scale_amount_min = 0.8
+	p.scale_amount_max = 2.0
 	p.color = Color(0.98, 0.85, 0.30)
 	get_parent().add_child(p)
 	p.global_position = global_position
@@ -135,8 +170,8 @@ func _enemy_eat(enemy: Node) -> void:
 	p.gravity = Vector2(0, -60)
 	p.initial_velocity_min = 60.0
 	p.initial_velocity_max = 180.0
-	p.scale_amount_min = 3.0
-	p.scale_amount_max = 8.0
+	p.scale_amount_min = 0.7
+	p.scale_amount_max = 1.6
 	p.color = Color(0.55, 0.45, 0.10, 0.8)
 	get_parent().add_child(p)
 	p.global_position = global_position
