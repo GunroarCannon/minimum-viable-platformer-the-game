@@ -102,8 +102,6 @@ const SCENES: Array = [
 		{"who": "narrator", "text": "Nothing happened to the last one."},
 		{"who": "soul",     "text": "something happened to the last one"},
 		{"who": "narrator", "text": "Ignore that. It leaks in through the save file. Harmless."},
-		{"who": "purple",   "text": "I am not harmless."},
-		{"who": "system",   "text": "sponsor disconnected"},
 	],
 },
 
@@ -162,7 +160,7 @@ const SCENES: Array = [
 	"id": "death_5", "at": "death", "mode": "black",
 	"when": {"deaths_at": [5]},
 	"blocks": [
-		{"who":"princess", "text": "[wave amp=25 freq=5]]HELLO![/wave] I'm the PRINCESS! Every good platformer needs one, apparently.
+		{"who":"princess", "text": "HELLO! I'm the PRINCESS! Every good platformer needs one, apparently.
   "},
 		{"who": "princess", "text": "...You're not here to rescue me, are you? You keep getting unalived."},
 		# DROPPED — uncomment to restore:
@@ -229,7 +227,6 @@ const SCENES: Array = [
 	"when": {"deaths_at": [100]},
 	"blocks": [
 		{"who": "narrator", "text": "A hundred. I would like to say something cutting here. I have run out."},
-		{"who": "purple",   "text": "You outlasted its material. That has happened once before."},
 	],
 },
 

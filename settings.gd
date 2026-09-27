@@ -153,6 +153,15 @@ func _ready() -> void:
 ## reachable from inside the app, so they are always built — the handlers report
 ## "unavailable" rather than the rows silently vanishing on a storeless build.
 func _add_purchase_rows(parent: VBoxContainer) -> void:
+	var tip_btn := _add_button_row(parent, "Support", "Support Developer ($0.50)")
+	tip_btn.pressed.connect(func():
+		if not IAP.available:
+			tip_btn.text = "Store unavailable"
+			await get_tree().create_timer(2.0).timeout
+			if is_instance_valid(tip_btn): tip_btn.text = "Support Developer ($0.50)"
+			return
+		IAP.purchase(IAP.PRODUCT_DEV_SUPPORT)
+	)
 	_restore_btn = _add_button_row(parent, "Purchases", "Restore Purchases")
 	_restore_btn.pressed.connect(_on_restore)
 	var manage_btn := _add_button_row(parent, "Subscription", "Manage Subscription")

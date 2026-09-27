@@ -39,10 +39,12 @@ const ENTITLEMENT_PUBLISHER := "publisher_deal"
 const PRODUCT_PUBLISHER_DEAL := "publisher_deal"
 const PRODUCT_TOKENS_SMALL := "tokens_small"
 const PRODUCT_TOKENS_LARGE := "tokens_large"
+const PRODUCT_DEV_SUPPORT  := "developer_support"
 
 ## Token grants for the consumable packs. Kept here rather than trusting a
 ## store-side value so the reward is identical no matter what the receipt says.
 const TOKEN_PACK_GRANTS := {
+	PRODUCT_DEV_SUPPORT: 15,
 	PRODUCT_TOKENS_SMALL: 25,
 	PRODUCT_TOKENS_LARGE: 90,
 }
