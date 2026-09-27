@@ -162,9 +162,11 @@ const SCENES: Array = [
 	"id": "death_5", "at": "death", "mode": "black",
 	"when": {"deaths_at": [5]},
 	"blocks": [
-		{"who": "princess", "text": "HELLO! I'm the PRINCESS.You're another one here huh?"},
+		{"who":"princess", "text": "[wave amp=25 freq=5]]HELLO![/wave] I'm the PRINCESS! Every good platformer needs one, apparently.
+  "},
+		{"who": "princess", "text": "...You're not here to rescue me, are you? You keep getting unalived."},
 		# DROPPED — uncomment to restore:
-		# {"who": "narrator", "text": "I do not replay them. I file them. There is a difference and it is my whole personality."},
+		# {"who":	 "narrator", "text": "I do not replay them. I file them. There is a difference and it is my whole personality."},
 	],
 },
 {
@@ -192,10 +194,7 @@ const SCENES: Array = [
 	"id": "death_15", "at": "death", "mode": "black",
 	"when": {"deaths_at": [15]},
 	"blocks": [
-		{"who": "purple",   "text": "Fifteen. You are wearing a groove in my floor."},
-		# DROPPED — uncomment to restore narrator pushback:
-		# {"who": "narrator", "text": "It is not its floor. It is a rented asset. I have said this."},
-		{"who": "purple",   "text": "The rent is you."},
+		{"who": "narrator",   "text": "Fifteen. You're getting the hang of this!."}
 	],
 },
 {
@@ -203,9 +202,7 @@ const SCENES: Array = [
 	"when": {"deaths_at": [21]},
 	"blocks": [
 		{"who": "narrator", "text": "Twenty-one. You are legally an adult in most of this level."},
-		{"who": "princess", "text": "he's so proud of that one. he's been saving it since eleven"},
-		# DROPPED — uncomment to restore narrator denial:
-		# {"who": "narrator", "text": "I was not saving it."},
+		{"who": "princess", "text": "he's so proud of that one. he's been saving it since eleven"}
 	],
 },
 {
@@ -214,9 +211,9 @@ const SCENES: Array = [
 	"blocks": [
 		{"who": "narrator", "text": "Thirty. At this point the deaths are the content and the running is the loading screen."},
 		# DROPPED — uncomment to restore full exchange:
-		# {"who": "soul",     "text": "he says that to everyone. he said it to me. i believed it"},
-		# {"who": "purple",   "text": "Quiet."},
-		# {"who": "system",   "text": "one voice removed from the transcript"},
+		{"who": "soul",     "text": "he says that to everyone. he said it to me. i believed it"},
+		{"who": "narrator",   "text": "Quiet."},
+		{"who": "system",   "text": "one voice removed from the transcript"},
 	],
 },
 {
