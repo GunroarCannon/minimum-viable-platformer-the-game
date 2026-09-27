@@ -115,8 +115,8 @@ func _play_pending_cut(at: String) -> void:
 
 
 func _refresh_labels() -> void:
-	title_label.text = "the MVP"
-	subtitle_label.text = "(Minimal Viable Platformer)"
+	title_label.text = "Minimum Viable Platformer"
+	subtitle_label.text = ""
 	tokens_label.text = "★  %d  tokens" % Global.tokens
 	best_label.text = "best:  %d m" % Global.best_distance
 
@@ -183,12 +183,12 @@ func _promote_to_topbar() -> void:
 	exit_btn.visible = false
 
 func _apply_home_polish() -> void:
-	title_label.add_theme_font_size_override("font_size", 96)
-	title_label.add_theme_color_override("font_color", Color(1.00, 0.74, 0.32))
+	title_label.add_theme_font_size_override("font_size", 68)
+	title_label.add_theme_color_override("font_color", Color(1.00, 0.76, 0.35))
 	title_label.add_theme_color_override("font_outline_color", Color(0.18, 0.14, 0.10))
-	title_label.add_theme_constant_override("outline_size", 12)
-	subtitle_label.add_theme_font_size_override("font_size", 26)
-	subtitle_label.add_theme_color_override("font_color", Color(0.99, 0.86, 0.72))
+	title_label.add_theme_constant_override("outline_size", 10)
+	subtitle_label.add_theme_font_size_override("font_size", 22)
+	subtitle_label.add_theme_color_override("font_color", Color(0.99, 0.88, 0.74))
 
 	# Gentle looping bob on the title.
 	var tw := create_tween().set_loops()

@@ -57,11 +57,30 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not sprite or not sprite.texture:
-		var points = PackedVector2Array()
-		points.append(Vector2(-spike_size.x / 2, spike_size.y / 2))
-		points.append(Vector2(0, -spike_size.y / 2))
-		points.append(Vector2(spike_size.x / 2, spike_size.y / 2))
-		draw_polygon(points, PackedColorArray([spike_color]))
+		var hw := spike_size.x * 0.5
+		var hh := spike_size.y * 0.5
+		var top_pt := Vector2(0, -hh)
+		var bot_left := Vector2(-hw, hh)
+		var bot_mid := Vector2(0, hh)
+		var bot_right := Vector2(hw, hh)
+
+		# Left facet (highlighted / main danger red)
+		var poly_left := PackedVector2Array([bot_left, top_pt, bot_mid])
+		draw_polygon(poly_left, PackedColorArray([spike_color]))
+
+		# Right facet (shaded darker red for 3D depth)
+		var poly_right := PackedVector2Array([bot_mid, top_pt, bot_right])
+		var shade_col := spike_color.darkened(0.28)
+		draw_polygon(poly_right, PackedColorArray([shade_col]))
+
+		# Dark outline and centre crease line
+		var outline := PackedVector2Array([bot_left, top_pt, bot_right, bot_left])
+		var ink_col := Color(0.18, 0.05, 0.05)
+		draw_polyline(outline, ink_col, 2.0, true)
+		draw_line(top_pt, bot_mid, ink_col, 1.5)
+
+		# Subtle base mounting plate
+		draw_line(Vector2(-hw - 2.0, hh), Vector2(hw + 2.0, hh), ink_col, 2.5)
 
 	if Global.debug_toggles.get("show_collisions", false):
 		var coll_size = Vector2(spike_size.x * 0.6, spike_size.y * 0.6)

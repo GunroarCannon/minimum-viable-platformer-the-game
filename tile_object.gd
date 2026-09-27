@@ -158,13 +158,31 @@ func _draw() -> void:
 	var half = base_size * 0.5
 
 	if not visual_texture or Global.use_primitives:
-		# Solid fill — a warm stone/grey colour
+		# Polished architectural stone slab look
 		var fill_rect = Rect2(-half, base_size)
-		draw_rect(fill_rect, Color(0.35, 0.32, 0.28), true)
-		# Subtle border to distinguish individual tiles
-		draw_rect(fill_rect, Color(0.22, 0.20, 0.17), false, 2.0)
-		# Small highlight on top edge
-		draw_line(-half, Vector2(half.x, -half.y), Color(0.55, 0.52, 0.46), 2.0)
+		var base_stone := Color(0.33, 0.31, 0.28)
+		var cap_stone  := Color(0.42, 0.39, 0.35)
+		var seam_col   := Color(0.24, 0.22, 0.20)
+		var hi_col     := Color(0.62, 0.58, 0.52)
+		var shadow_col := Color(0.18, 0.16, 0.14)
+
+		# 1. Main slab body
+		draw_rect(fill_rect, base_stone, true)
+
+		# 2. Top cap slab band (18px)
+		var cap_h = min(18.0, base_size.y * 0.25)
+		draw_rect(Rect2(-half.x, -half.y, base_size.x, cap_h), cap_stone, true)
+
+		# 3. Top edge bevel highlight & cap seam line
+		draw_line(-half, Vector2(half.x, -half.y), hi_col, 2.0)
+		draw_line(Vector2(-half.x, -half.y + cap_h), Vector2(half.x, -half.y + cap_h), seam_col, 1.5)
+
+		# 4. Base shadow
+		var shadow_h = min(12.0, base_size.y * 0.15)
+		draw_rect(Rect2(-half.x, half.y - shadow_h, base_size.x, shadow_h), shadow_col, true)
+
+		# 5. Crisp border
+		draw_rect(fill_rect, seam_col, false, 2.0)
 
 	# Highlight lines on exposed outside edges (based on 4px thick lines on 160x160 assets)
 	var line_thickness = 4.0 * (base_size.y / 160.0)

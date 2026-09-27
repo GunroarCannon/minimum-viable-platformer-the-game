@@ -129,21 +129,49 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	if not Global.gfx("enemy_sprites") or not sprite or not sprite.texture:
-		var rect = Rect2(-smasher_size / 2, smasher_size)
-		draw_rect(rect, Color(0.3, 0.3, 0.4)) # Dark Gray block
-		
-		# Draw angry "eyes" for personality
-		draw_rect(Rect2(-smasher_size.x/4 - 15, -20, 30, 20), Color(1, 0, 0))
-		draw_rect(Rect2(smasher_size.x/4 - 15, -20, 30, 20), Color(1, 0, 0))
-		
-		# Draw screw threads / slanted lines style Spikes
-		var points = PackedVector2Array()
-		points.append(Vector2(-smasher_size.x / 2, smasher_size.y / 2))
-		points.append(Vector2(-smasher_size.x / 4, smasher_size.y / 2 + 20))
-		points.append(Vector2(0, smasher_size.y / 2))
-		points.append(Vector2(smasher_size.x / 4, smasher_size.y / 2 + 20))
-		points.append(Vector2(smasher_size.x / 2, smasher_size.y / 2))
-		draw_polygon(points, PackedColorArray([Color(0.8, 0.8, 0.8)]))
+		var half := smasher_size * 0.5
+		var rect = Rect2(-half, smasher_size)
+		var base_col := Color(0.28, 0.28, 0.34)
+		var bevel_col := Color(0.42, 0.42, 0.50)
+		var shadow_col := Color(0.18, 0.18, 0.22)
+		var ink_col := Color(0.10, 0.10, 0.14)
+
+		# 1. Main crushing block body
+		draw_rect(rect, base_col, true)
+
+		# 2. Bevel highlights & shadow
+		draw_line(Vector2(-half.x, -half.y + 2), Vector2(half.x, -half.y + 2), bevel_col, 3.0)
+		draw_line(Vector2(-half.x + 2, -half.y), Vector2(-half.x + 2, half.y), bevel_col, 3.0)
+		draw_line(Vector2(half.x - 2, -half.y), Vector2(half.x - 2, half.y), shadow_col, 3.0)
+		draw_rect(rect, ink_col, false, 2.5)
+
+		# 3. Angry angled eyes with dark frame
+		var eye_w := 28.0
+		var eye_h := 16.0
+		var eye_y := -10.0
+		var eye_lx := -smasher_size.x * 0.25
+		var eye_rx := smasher_size.x * 0.25
+
+		# Eye sockets
+		draw_rect(Rect2(eye_lx - eye_w * 0.5 - 2, eye_y - 2, eye_w + 4, eye_h + 4), ink_col, true)
+		draw_rect(Rect2(eye_rx - eye_w * 0.5 - 2, eye_y - 2, eye_w + 4, eye_h + 4), ink_col, true)
+		# Glowing red pupils
+		draw_rect(Rect2(eye_lx - eye_w * 0.5, eye_y, eye_w, eye_h), Color(1.0, 0.15, 0.15), true)
+		draw_rect(Rect2(eye_rx - eye_w * 0.5, eye_y, eye_w, eye_h), Color(1.0, 0.15, 0.15), true)
+		# Inner pupil highlight
+		draw_rect(Rect2(eye_lx - 2, eye_y + 4, 6, 8), Color(1.0, 0.8, 0.8), true)
+		draw_rect(Rect2(eye_rx - 2, eye_y + 4, 6, 8), Color(1.0, 0.8, 0.8), true)
+
+		# 4. Crushing teeth spikes on bottom
+		var points = PackedVector2Array([
+			Vector2(-half.x, half.y),
+			Vector2(-half.x * 0.5, half.y + 22),
+			Vector2(0, half.y),
+			Vector2(half.x * 0.5, half.y + 22),
+			Vector2(half.x, half.y)
+		])
+		draw_polygon(points, PackedColorArray([Color(0.85, 0.85, 0.90)]))
+		draw_polyline(points, ink_col, 2.0)
 
 	if Global.debug_toggles.get("show_collisions", false):
 		draw_rect(Rect2(-smasher_size / 2, smasher_size), Color.GREEN, false, 2.0)

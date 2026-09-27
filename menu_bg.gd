@@ -30,7 +30,29 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var sz = size
 	if _resolved_theme() == "placeholder":
-		draw_rect(Rect2(Vector2.ZERO, sz), Color(0.12, 0.12, 0.13), true)
+		# Sleek minimalist slate gradient with faint blueprint grid
+		var bg_top := Color(0.14, 0.15, 0.18)
+		var bg_bot := Color(0.08, 0.08, 0.10)
+		var bands = 16
+		for i in bands:
+			var ty = float(i) / float(bands)
+			var col = bg_top.lerp(bg_bot, ty)
+			draw_rect(Rect2(0, sz.y * ty, sz.x, sz.y / bands + 1.0), col, true)
+
+		# Faint minimalist blueprint grid
+		var grid_col := Color(1.0, 1.0, 1.0, 0.035)
+		var grid_step := 64.0
+		var gx := 0.0
+		while gx <= sz.x:
+			draw_line(Vector2(gx, 0), Vector2(gx, sz.y), grid_col, 1.0)
+			gx += grid_step
+		var gy := 0.0
+		while gy <= sz.y:
+			draw_line(Vector2(0, gy), Vector2(sz.x, gy), grid_col, 1.0)
+			gy += grid_step
+
+		# Subtle bottom anchor bar
+		draw_line(Vector2(0, sz.y - 2.0), Vector2(sz.x, sz.y - 2.0), Color(1.0, 1.0, 1.0, 0.08), 2.0)
 		return
 
 	# ─── Polished: warm sky → peach gradient ───────────────────────

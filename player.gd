@@ -140,9 +140,43 @@ func _draw() -> void:
 
 	# Primitive shape if we don't have the player sprite unlocked.
 	if not _use_sprite_player:
-		draw_rect(Rect2(-40 * s.x, -55 * s.y, 80 * s.x, 110 * s.y), Color(0.2, 0.4, 0.9, 0.8), true)
-		draw_rect(Rect2(10 * s.x, -35 * s.y, 15 * s.x, 15 * s.y), Color.WHITE, true)
-		draw_rect(Rect2(20 * s.x, -30 * s.y, 5 * s.x, 5 * s.y), Color.BLACK, true)
+		var w := 80.0 * s.x
+		var h := 110.0 * s.y
+		var half_w := w * 0.5
+		var half_h := h * 0.5
+		var rect := Rect2(-half_w, -half_h, w, h)
+
+		var body_col := Color(0.18, 0.44, 0.88, 0.95)
+		var body_dark := Color(0.12, 0.28, 0.62)
+		var hi_col := Color(0.38, 0.65, 1.0)
+		var ink_col := Color(0.08, 0.16, 0.36)
+
+		# 1. Main body capsule
+		draw_rect(rect, body_col, true)
+
+		# 2. Highlight ridge on top & left
+		draw_line(Vector2(-half_w + 3, -half_h + 3), Vector2(half_w - 3, -half_h + 3), hi_col, 3.0)
+		draw_line(Vector2(-half_w + 3, -half_h + 3), Vector2(-half_w + 3, half_h - 3), hi_col, 3.0)
+
+		# 3. Grounding shadow band at bottom
+		draw_rect(Rect2(-half_w, half_h - 14 * s.y, w, 14 * s.y), body_dark, true)
+
+		# 4. Crisp outline
+		draw_rect(rect, ink_col, false, 2.5)
+
+		# 5. Visor / eyes
+		var facing := 1.0 if velocity.x >= -10.0 else -1.0
+		var visor_w := 26.0 * s.x
+		var visor_h := 16.0 * s.y
+		var visor_x := (10.0 if facing > 0 else -10.0 - visor_w) * s.x
+		var visor_y := -34.0 * s.y
+		var visor_rect := Rect2(visor_x, visor_y, visor_w, visor_h)
+
+		# Visor background & glass glow
+		draw_rect(Rect2(visor_x - 2, visor_y - 2, visor_w + 4, visor_h + 4), ink_col, true)
+		draw_rect(visor_rect, Color(0.95, 0.98, 1.0), true)
+		var pupil_x := visor_x + (visor_w - 9.0 * s.x if facing > 0 else 3.0 * s.x)
+		draw_rect(Rect2(pupil_x, visor_y + 3.0 * s.y, 6.0 * s.x, 10.0 * s.y), Color(0.10, 0.22, 0.45), true)
 
 func _on_debug_draw() -> void:
 	if Global.debug_toggles.get("show_collisions", false):

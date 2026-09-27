@@ -1,4 +1,4 @@
-extends CanvasLayer
+extends CanvasLayer	
 
 const FONT_KA1 := preload("res://assets/fonts/ka1.ttf")
 const FONT_PRIMITIVE := preload("res://assets/fonts/Terminus.ttf")

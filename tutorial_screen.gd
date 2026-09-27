@@ -10,10 +10,11 @@ signal finished
 ## Optional "who" pulls font/size/colour from StoryDB.VOICES, so the intro speaks
 ## in the same voices as the later story cuts. Omit it for the neutral look.
 const SLIDES: Array = [
+	# too chatty
 	{
-		"who":   "sponsor",
+		"who":   "narrator",
 		"title": "WELCOME FRIENDS!",
-		"body":  "Welcome to a happy world of challenge!\nGrab your best friends and get ready to smile.\n(If you have any friends).",
+		"body":  "Welcome to a happy world of challenge!\nGrab your best friends and get ready to smile.",
 		"icon":  "♥",
 	},
 	{
@@ -22,30 +23,24 @@ const SLIDES: Array = [
 		"body":  "Tap to jump. Tap longer to jump higher.\nAvoid the pointy hugs, or bounce on their heads for a fun boost.\nThey just want to be close to you. Forever.",
 		"icon":  "↑",
 	},
-	{
-		"who":   "princess",
-		"title": "oh, a NEW one",
-		"body":  "Hello! You're the forty-thousandth today.\nDon't listen to the tall voice, it reads from a script it hasn't finished.\nI'll be over here. Being decorative. Allegedly.",
-		"icon":  "❀",
-	},
-	{
-		"who":   "soul",
-		"title": "listen",
-		"body":  "none of this belongs to him\nhe borrowed the whole thing and he is going to ask for it back\nplease remember i said it first",
-		"icon":  "◌",
-	},
+	#{
+		#"who":   "princess",
+		#"title": "oh, a NEW one",
+		#"body":  "Hello! You're the forty-thousandth today.\nDon't listen to the tall voice, it reads from a script it hasn't finished.\nI'll be over here. Being decorative. Allegedly.",
+		#"icon":  "❀",
+	#},
+	#{
+		#"who":   "soul",
+		#"title": "listen",
+		#"body":  "none of this belongs to him\nhe borrowed the whole thing and he is going to ask for it back\nplease remember i said it first",
+		#"icon":  "◌",
+	#},
 	{
 		"who":   "narrator",
 		"title": "WE GAVE YOU EVERYTHING",
-		"body":  "Ignore that. It gets in through the save file.\nGood news! We've generously unlocked all features for you.\nEnjoy this fully developed, perfectly safe experience.",
+		"body":  "Enjoy this fully developed, perfectly safe experience.",
 		"icon":  "★",
-	},
-	{
-		"who":   "purple",
-		"title": "EVERYTHING",
-		"body":  "YES.\nEVERYTHING.\nFOR NOW.",
-		"icon":  "▲",
-	},
+	}
 ]
 # ─────────────────────────────────────────────────────────────────────────────
 

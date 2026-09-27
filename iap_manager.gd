@@ -331,11 +331,10 @@ func _admob() -> Node:
 	return _admob_node
 
 
-## True when it is worth offering the player an ad at all. Publisher Deal owners
-## have paid to never see one.
+## True when it is worth offering the player an ad at all.
+## Disabled: focus is solely on real RevenueCat purchases/entitlements.
 func ads_enabled() -> bool:
-	if owns_publisher_deal(): return false
-	return OS.is_debug_build() or ADS_WIRED
+	return false
 
 
 ## ─── PAYLOAD HELPERS ────────────────────────────────────────────────────

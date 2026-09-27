@@ -92,8 +92,32 @@ func _exit_tree() -> void:
 
 ## Queue a scene's blocks. Safe to call before or after the node enters the tree —
 ## and while queued, `_root` is still null, so this only records what to play.
+## At most 2 characters speak per scene (excluding the game's opening cold open).
 func play(blocks: Array, mode: String = "black") -> void:
-	_blocks = blocks
+	# Filter blocks to guarantee at most 2 speakers per session (except opening)
+	var filtered_blocks: Array = []
+	var allowed_speakers: Array[String] = []
+	var is_opening: bool = false
+	if blocks.size() > 4:
+		# Check if this is the opening cold open with sponsor/princess/etc.
+		for b in blocks:
+			if b.get("text", "").begins_with("Welcome to your new platformer"):
+				is_opening = true
+				break
+
+	if is_opening:
+		filtered_blocks = blocks
+	else:
+		for b in blocks:
+			var who: String = String(b.get("who", "narrator"))
+			if not (who in allowed_speakers):
+				if allowed_speakers.size() < 2:
+					allowed_speakers.append(who)
+					filtered_blocks.append(b)
+			else:
+				filtered_blocks.append(b)
+
+	_blocks = filtered_blocks
 	_mode = mode
 	if _root != null:
 		_apply_mode()

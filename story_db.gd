@@ -112,8 +112,7 @@ const SCENES: Array = [
 	"id": "guide_buy_ui", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "Right. It took the game and left you the physics. Generous, technically."},
-		{"who": "purple",   "text": "You cannot buy back what is mine."},
-		{"who": "narrator", "text": "You died, so you were paid. That is the entire economy. Dying is the job."},
+		{"who": "narrator", "text": "You died, so you were paid. The firther you go the more you're paid."},
 		# DROPPED — uncomment to restore narrator closer:
 		# {"who": "narrator", "text": "You can, actually. It kept the receipts. Start with the interface — you'll want menus before you want anything nice."},
 	],
@@ -122,34 +121,28 @@ const SCENES: Array = [
 	"id": "guide_menu", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "Congratulations. You now own a menu. Some people own houses."},
-		{"who": "princess", "text": "a MENU! it has BUTTONS! i'm so proud of you, little runner"},
 		{"who": "narrator", "text": "Everything else lives in the Shop. Tokens in, world out. Go on."},
 	],
 },
 {
 	"id": "guide_shop_intro", "at": "guide", "mode": "scrim",
 	"blocks": [
-		{"who": "narrator", "text": "This is the tree. Every branch is something that used to be here for free."},
-		{"who": "sponsor",  "text": "MONETIZE YOUR SUFFERING! Tokens are earned exclusively through failure. No purchase necessary. No purchase possible."},
-		{"who": "narrator", "text": "It isn't a real sponsor. It just found the ad slot and moved in."},
+		{"who": "narrator", "text": "This is the tree. Every branch is something that improves the game."},
+		{"who": "sponsor",  "text": "MONETIZE YOUR SUFFERING! Tokens are earned exclusively through failure. No purchase necessary. No purchase possible."}
 	],
 },
 {
 	"id": "guide_procgen", "at": "guide", "mode": "scrim",
 	"blocks": [
-		{"who": "narrator", "text": "Buy the level generator first. I'll be honest with you, which I try to ration."},
 		{"who": "narrator", "text": "Right now there is one level. One. You have already seen all of it, and it has seen all of you."},
-		{"who": "purple",   "text": "I left you the flat part. Be grateful."},
-		{"who": "soul",     "text": "he ran the flat part four thousand times. ask him."},
-		{"who": "narrator", "text": "Procedural generation, then. New ground every run. Farther runs pay more. Greed is the tutorial."},
+		{"who": "narrator", "text": "Buy the level generator first to fix that."},
 	],
 },
 {
 	"id": "guide_enemies", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "Now buy the enemies. Yes, on purpose. Yes, they kill you."},
-		{"who": "narrator", "text": "Every tier of enemy in the world pays twenty percent more per token. The danger is the interest rate."},
-		{"who": "princess", "text": "they're not MEAN, they just don't have anywhere else to be!"},
+		{"who": "narrator", "text": "Every tier of enemy in the world pays more per tokens. The danger is the interest rate."},
 		{"who": "purple",   "text": "They work for me."},
 		{"who": "narrator", "text": "They work for the payout multiplier. So do you. Tap the node."},
 	],
@@ -169,7 +162,7 @@ const SCENES: Array = [
 	"id": "death_5", "at": "death", "mode": "black",
 	"when": {"deaths_at": [5]},
 	"blocks": [
-		{"who": "purple",   "text": "Five. I have stopped watching. It replays them for me."},
+		{"who": "princess", "text": "HELLO! I'm the PRINCESS.You're another one here huh?"},
 		# DROPPED — uncomment to restore:
 		# {"who": "narrator", "text": "I do not replay them. I file them. There is a difference and it is my whole personality."},
 	],
@@ -232,18 +225,14 @@ const SCENES: Array = [
 	"blocks": [
 		{"who": "purple",   "text": "Fifty. I have never had to work this little."},
 		{"who": "narrator", "text": "Fifty deaths is, and I want to be precise, a lot of deaths."},
-		{"who": "princess", "text": "i've stopped counting. i lied. i haven't. it's fifty"},
 	],
 },
 {
 	"id": "death_100", "at": "death", "mode": "black",
 	"when": {"deaths_at": [100]},
 	"blocks": [
-		{"who": "system",   "text": "death 100"},
 		{"who": "narrator", "text": "A hundred. I would like to say something cutting here. I have run out."},
 		{"who": "purple",   "text": "You outlasted its material. That has happened once before."},
-		{"who": "soul",     "text": "that was me. i outlasted the material. this is what's left"},
-		{"who": "princess", "text": "...keep going, little runner. genuinely. i mean it this once"},
 	],
 },
 
@@ -282,10 +271,7 @@ const SCENES: Array = [
 	"when": {"purchased": "procgen"},
 	"blocks": [
 		{"who": "purple",   "text": "You put the ground back. I removed that personally."},
-		# DROPPED — uncomment to restore:
-		# {"who": "narrator", "text": "It removed it by unplugging one node. It talks about it like heavy labour."},
-		# {"who": "princess", "text": "there's SO MUCH of it now. it just keeps happening!"},
-		{"who": "purple",   "text": "It talks about it like heavy labour."},
+		{"who": "narrator", "text": "It removed it by unplugging one node. It talks about it like heavy labour."},
 	],
 },
 {

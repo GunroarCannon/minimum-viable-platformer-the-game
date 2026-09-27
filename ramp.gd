@@ -36,13 +36,23 @@ func _draw() -> void:
 		points.append(Vector2(base_size.x/2, base_size.y/2))
 		points.append(Vector2(-base_size.x/2, base_size.y/2))
 	
-	# Warm stone color with top-edge highlight
-	draw_polygon(points, PackedColorArray([Color(0.65, 0.55, 0.45)]))
-	# Draw highlight line
+	var base_stone := Color(0.33, 0.31, 0.28)
+	var seam_col   := Color(0.24, 0.22, 0.20)
+	var hi_col     := Color(0.62, 0.58, 0.52)
+	
+	# Solid ramp body
+	draw_polygon(points, PackedColorArray([base_stone]))
+
+	# Border outline
+	var outline = points.duplicate()
+	outline.append(points[0])
+	draw_polyline(outline, seam_col, 2.0, true)
+
+	# Clean slope bevel highlight
 	if ramp_type == "up":
-		draw_line(Vector2(-base_size.x/2, base_size.y/2), Vector2(base_size.x/2, -base_size.y/2), Color(0.8, 0.7, 0.6), 4.0)
+		draw_line(Vector2(-base_size.x/2, base_size.y/2), Vector2(base_size.x/2, -base_size.y/2), hi_col, 3.0)
 	else:
-		draw_line(Vector2(-base_size.x/2, -base_size.y/2), Vector2(base_size.x/2, base_size.y/2), Color(0.8, 0.7, 0.6), 4.0)
+		draw_line(Vector2(-base_size.x/2, -base_size.y/2), Vector2(base_size.x/2, base_size.y/2), hi_col, 3.0)
 
 func squash() -> void:
 	# Simple visual squash feedback
