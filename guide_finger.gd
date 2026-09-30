@@ -179,9 +179,14 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if allowed_rect().has_point(pos):
-		if event is InputEventScreenTouch and event.pressed:
+		if (event is InputEventScreenTouch and event.pressed) or (event is InputEventMouseButton and event.pressed):
 			target_pressed.emit()
-		elif event is InputEventMouseButton and event.pressed:
-			target_pressed.emit()
+			# Stop gating the instant the target is hit — the click below is about
+			# to navigate to a new screen, and nothing else ever clears this (no one
+			# listens to target_pressed). Without this, the finger keeps swallowing
+			# input — including back — on the NEW screen until the next attach()
+			# call gets around to tearing it down, and that call is deferred so it
+			# can land a frame late against stale, since-freed target geometry.
+			clear_target()
 		return  # falls through to the real Button / Control
 	get_viewport().set_input_as_handled()

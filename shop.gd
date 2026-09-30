@@ -27,7 +27,7 @@ var _recommend_cycle: Array = []
 var _recommend_idx: int = -1
 var _recommend_state_sig: String = ""
 
-## "Get tokens" — opens the RevenueCat paywall. Lives in the top bar next to the
+## "Get tokens" — opens the in-game store. Lives in the top bar next to the
 ## token count, which is exactly where a player looks when they are short.
 var _store_btn: Button = null
 ## "Watch to try" — lends the selected skill for one run. Appended to the detail
@@ -135,6 +135,9 @@ func _ready() -> void:
 	tree_view.set_selected(SkillsDB.ROOT_ID)
 	_on_skill_selected(SkillsDB.ROOT_ID)
 	AudioManager.play_music("shop", 1.2)
+	# Visiting the shop resets the enemy guide's "dodging the shop" streak.
+	Global.runs_since_shop = 0
+	Global.save_state_deferred()
 	AudioManager.connect_ui_clicks(self)
 	# Forced guide: patter, pans the tree, then points at the node. No-ops after.
 	Onboarding.attach.call_deferred(self, "shop")
@@ -314,13 +317,11 @@ func _refresh_detail() -> void:
 		tw.tween_property(d_buy, "rotation", -0.05, 0.05)
 		tw.tween_property(d_buy, "rotation", 0.0, 0.05)
 
-## Paywall entry. present_paywall() is RevenueCat's native UI, so there is no
-## in-engine paywall to keep in sync — see for_hackathon.md §4.
+## Store entry. Opens the in-game store (store_view.gd) rather than
+## RevenueCat's native paywall, which didn't match the rest of the game.
 func _on_store() -> void:
-	if not IAP.available:
-		_flash_title("Store unavailable on this build")
-		return
-	IAP.present_paywall()
+	var store := StoreView.open(self)
+	store.closed.connect(_refresh)
 
 ## Rewarded-ad trial for the selected skill. Nothing is granted until the ad
 ## actually reports completion — never on the button press.
@@ -362,6 +363,10 @@ func _on_toggle_active(pressed: bool) -> void:
 	if not SkillsDB.is_purchased(sid) and not unlock_all: return
 	var fkey = SkillsDB.get_feature_key(sid)
 	Global.set_feature_override(fkey, pressed)
+	# The chosen font follows the Font Select switch live, so the info panel
+	# drops back to the plain font the moment it's turned off.
+	if fkey == "font_select":
+		UITheme.apply_font_choice(self)
 	tree_view.queue_redraw()
 
 func _on_skill_selected(_sid: String) -> void:
@@ -373,86 +378,15 @@ func _on_buy() -> void:
 	if SkillsDB.purchase(sid):
 		AudioManager.play("ui_buy", 0.0, 0.04)
 		Onboarding.notify_purchase(sid)
+		if SkillsDB.get_feature_key(sid) == "font_select":
+			UITheme.apply_font_choice(self)
 		# small celebration tween on token label
 		var tw = create_tween()
 		tw.tween_property(tokens_label, "scale", Vector2(1.25, 1.25), 0.10).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(tokens_label, "scale", Vector2.ONE, 0.18)
-		# Enemy-unlock reward fanfare.
-		var d = SkillsDB.SKILLS.get(sid, null)
-		if d and d.get("branch", "") == "enemies":
-			_show_enemy_unlock_fanfare(sid, d)
 	else:
 		AudioManager.play("ui_glass", -4.0, 0.05)
 	_refresh()
-
-var _ENEMY_UNLOCK_MESSAGES := {
-	"enemies_basic":    ["Frogs & Kobolds\nhave entered the level!", "You now earn tokens faster!"],
-	"enemy_sprites":    ["Enemies now have\nproper sprite art!", "They look scarier now."],
-	"enemies_more":     ["Bats & Big Frogs\nare now gaurd the sky!", "You now earn tokens even faster!"],
-	"enemies_advanced": ["Bombs, Drills &\nShooters arrive!", "You gain tokens at the best rate."],
-	"smashers":         ["SMASHERS deployed!", "You have fully optimized token gain rate!"],
-	#"sprite_explosion": ["Bombs explode\nin glorious animation!", "Boom."],
-}
-
-func _show_enemy_unlock_fanfare(sid: String, d: Dictionary) -> void:
-	var msgs: Array = _ENEMY_UNLOCK_MESSAGES.get(sid, [d.get("name", sid) + "\nunlocked!"])
-	var headline: String = msgs[0] if msgs.size() > 0 else "Unlocked!"
-	var sub: String = msgs[1] if msgs.size() > 1 else ""
-
-	var overlay := PanelContainer.new()
-	overlay.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	overlay.custom_minimum_size = Vector2(360, 0)
-	overlay.z_index = 200
-	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.06, 0.16, 0.95)
-	sb.border_color = Color(0.95, 0.45, 0.55, 1.0)
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(18)
-	sb.content_margin_left = 24; sb.content_margin_right = 24
-	sb.content_margin_top = 20; sb.content_margin_bottom = 20
-	overlay.add_theme_stylebox_override("panel", sb)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 10)
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	overlay.add_child(vbox)
-
-	var icon_lbl := Label.new()
-	icon_lbl.text = d.get("icon", "!!")
-	icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon_lbl.add_theme_font_size_override("font_size", 52)
-	icon_lbl.add_theme_color_override("font_color", Color(0.95, 0.45, 0.55))
-	vbox.add_child(icon_lbl)
-
-	var title_lbl := Label.new()
-	title_lbl.text = headline
-	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title_lbl.add_theme_font_size_override("font_size", 26)
-	title_lbl.add_theme_color_override("font_color", Color(1.0, 0.92, 0.88))
-	vbox.add_child(title_lbl)
-
-	if sub != "":
-		var sub_lbl := Label.new()
-		sub_lbl.text = sub
-		sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		sub_lbl.add_theme_font_size_override("font_size", 18)
-		sub_lbl.add_theme_color_override("font_color", Color(0.75, 0.65, 0.80))
-		vbox.add_child(sub_lbl)
-
-	add_child(overlay)
-	overlay.modulate.a = 0.0
-	overlay.scale = Vector2(0.6, 0.6)
-	overlay.pivot_offset = overlay.size * 0.5
-
-	var tw2 := create_tween()
-	tw2.tween_property(overlay, "modulate:a", 1.0, 0.18)
-	tw2.parallel().tween_property(overlay, "scale", Vector2(1.08, 1.08), 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw2.tween_property(overlay, "scale", Vector2.ONE, 0.10)
-	tw2.tween_interval(1.6)
-	tw2.tween_property(overlay, "modulate:a", 0.0, 0.28)
-	tw2.tween_callback(overlay.queue_free)
 
 func _on_back() -> void:
 	get_tree().change_scene_to_file("res://main_menu.tscn")

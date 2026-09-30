@@ -68,6 +68,14 @@ func _ready() -> void:
 	)
 	title_label.text = "Settings"
 
+	# Developer switches. "Unlock all" in a shipped build would hand out the
+	# whole skill tree (and make the token store pointless), so release builds
+	# never show these rows and never honour the toggle.
+	if not OS.is_debug_build():
+		$Root/Panel/Scroll/V/DebugRow.visible = false
+		$Root/Panel/Scroll/V/UnlockAllRow.visible = false
+		Global.debug_toggles["unlock_all"] = false
+
 	# Clip hover highlights to the scroll area so they don't bleed outside the panel.
 	$Root/Panel.clip_contents = true
 	$Root/Panel/Scroll.clip_contents = true
@@ -81,12 +89,13 @@ func _ready() -> void:
 			Global.save_state()
 	)
 	# Dev toggle: swaps the player to a crunchier, less-floaty jump curve.
-	_add_checkbox_row(vbox, "Use new jump",
-		Global.settings_cfg.get("use_new_jump", false),
-		func(v: bool):
-			Global.settings_cfg["use_new_jump"] = v
-			Global.save_state()
-	)
+	if OS.is_debug_build():
+		_add_checkbox_row(vbox, "Use new jump",
+			Global.settings_cfg.get("use_new_jump", false),
+			func(v: bool):
+				Global.settings_cfg["use_new_jump"] = v
+				Global.save_state()
+		)
 	if Global.is_unlocked("palette_switcher"):
 		_add_option_row(vbox, "Colour palette",
 			["Default", "Warm", "Cool", "Night", "Neon"],

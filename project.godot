@@ -18,7 +18,9 @@ config/name="Minimum Viable Platformer"
 config/version="1.0.0"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
-config/icon="res://icon.svg"
+boot_splash/bg_color=Color(0.1, 0.09, 0.08, 1)
+boot_splash/image="res://assets/app_icon/critbox_splash.png"
+config/icon="res://assets/app_icon/icon_512.png"
 
 [autoload]
 

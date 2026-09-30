@@ -10,6 +10,17 @@ var state = "walking" # walking, loading, exploding
 var timer: float = 0.0
 var color_mod = Color(0.1, 0.1, 0.1)
 
+## Built once and shared by every explosion poof — fixed colors, no reason to
+## allocate + rebuild this every time a bomb goes off.
+static var _poof_ramp: Gradient = null
+
+static func _get_poof_ramp() -> Gradient:
+	if _poof_ramp == null:
+		_poof_ramp = Gradient.new()
+		_poof_ramp.set_color(0, Color(1.0, 0.75, 0.2, 1.0))
+		_poof_ramp.set_color(1, Color(0.6, 0.15, 0.0, 0.0))
+	return _poof_ramp
+
 func _ready() -> void:
 	super._ready()
 	tear_size      = Vector2(64, 64)
@@ -137,52 +148,64 @@ func _apply_explosion_knockback(radius: float) -> void:
 		elif n is RigidBody2D:
 			(n as RigidBody2D).apply_impulse(impulse)
 	
+	# Visual only — the blast and knockback above happen regardless. Before
+	# Particles is bought a bomb just vanishes, like every other effect.
 	if Global.is_unlocked("sprite_explosion"):
 		_spawn_sprite_explosion()
-	else:
+	elif Global.is_unlocked("particles"):
 		var poof = CPUParticles2D.new()
 		poof.texture = Global.get_circle_texture()
 		poof.emitting = true
 		poof.one_shot = true
-		poof.amount = 60
+		poof.amount = 40
 		poof.lifetime = 0.5
 		poof.explosiveness = 1.0
 		poof.spread = 180.0
 		poof.initial_velocity_min = 200.0
-		poof.initial_velocity_max = 600.0
-		poof.scale_amount_min = 2.0
-		poof.scale_amount_max = 6.5
+		poof.initial_velocity_max = 520.0
+		poof.scale_amount_min = 0.19   # 12–36 px
+		poof.scale_amount_max = 0.56
 		poof.color = Color(1.0, 0.4, 0.0)
+		poof.color_ramp = _get_poof_ramp()
 		get_parent().add_child(poof)
 		poof.global_position = global_position
+		poof.finished.connect(poof.queue_free)
 
 	queue_free()
 
-func _spawn_sprite_explosion() -> void:
+## Built once and shared by every bomb — loading 12 textures per explosion was
+## a hitch on phones.
+static var _boom_frames: SpriteFrames = null
+
+static func _explosion_frames() -> SpriteFrames:
+	if _boom_frames != null: return _boom_frames
 	var folder := "res://assets/animations/explosion/"
 	var frames := SpriteFrames.new()
 	frames.add_animation("boom")
 	frames.set_animation_loop("boom", false)
 	frames.set_animation_speed("boom", 24.0)
-	var dir := DirAccess.open(folder)
-	if dir == null: return
+	# ResourceLoader.list_directory, not DirAccess: in an exported build the
+	# .png files are remapped and DirAccess only lists their .import stubs, so
+	# the explosion was silently empty on phones.
 	var files: Array = []
-	dir.list_dir_begin()
-	while true:
-		var f := dir.get_next()
-		if f == "": break
+	for f in ResourceLoader.list_directory(folder):
 		if f.ends_with(".png"): files.append(f)
-	dir.list_dir_end()
 	files.sort_custom(func(a, b):
 		return int(a.get_basename()) < int(b.get_basename())
 	)
 	for f in files:
 		var tex: Texture2D = load(folder + f)
 		if tex: frames.add_frame("boom", tex)
+	_boom_frames = frames
+	return frames
+
+func _spawn_sprite_explosion() -> void:
 	var sprite := AnimatedSprite2D.new()
-	sprite.sprite_frames = frames
+	sprite.sprite_frames = _explosion_frames()
 	sprite.global_position = global_position
-	sprite.scale = Vector2(4.0, 4.0)
+	# Pixel art: nearest filtering at a whole-number scale keeps it crisp.
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sprite.scale = Vector2(2.0, 2.0)
 	get_parent().add_child(sprite)
 	sprite.play("boom")
 	sprite.animation_finished.connect(sprite.queue_free)

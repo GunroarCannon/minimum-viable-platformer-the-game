@@ -14,7 +14,6 @@ var _step: int = 0
 var _bg: ColorRect
 var _comfort_label: Label
 var _purple_label: Label
-var _princess_label: Label
 var _soul_label: Label
 var _plain_label: Label
 var _unlock_label: Label
@@ -63,22 +62,9 @@ func _ready() -> void:
 	_purple_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_purple_label)
 
-	# The pink one and the trapped soul get a beat each before the narrator
+	# The trapped soul gets a beat before the narrator
 	# recovers and starts selling. Same voices as StoryDB so the intro, this
 	# overlay and the later story cuts all read as one system.
-	_princess_label = Label.new()
-	_princess_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_princess_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_princess_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_princess_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_princess_label.add_theme_font_override("font", FONT_JUICE)
-	_princess_label.add_theme_font_size_override("font_size", 40)
-	_princess_label.add_theme_color_override("font_color", PINK_TEXT)
-	_princess_label.text = "oh, it took the music as well.\nit always takes the music first.\ndon't cry — they left you a shop. so generous."
-	_princess_label.modulate.a = 0.0
-	_princess_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_princess_label)
-
 	_soul_label = Label.new()
 	_soul_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_soul_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -179,14 +165,8 @@ func _process(_delta: float) -> void:
 	if _glitching:
 		_comfort_label.position = Vector2(randf_range(-15.0, 15.0), randf_range(-10.0, 10.0))
 		_comfort_label.modulate = Color(randf(), randf(), randf(), 1.0)
-
 	if _step == 1 and not _glitching and _purple_label.modulate.a > 0.1:
 		_purple_label.position = Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
-
-	# Pink text drifts instead of jittering — she is the only calm thing in here.
-	if _step == 2 and _princess_label.modulate.a > 0.1:
-		var t := float(Time.get_ticks_msec()) * 0.001
-		_princess_label.position = Vector2(sin(t * 2.1) * 7.0, sin(t * 1.3) * 5.0)
 
 ## Fade one speaker out and the next in, re-enabling input when the swap lands.
 func _crossfade(out_lbl: Label, in_lbl: Label) -> void:
@@ -210,7 +190,6 @@ func _input(event: InputEvent) -> void:
 		is_tap = true
 	if not is_tap:
 		return
-	# One action per frame — deduplicate touch+mouse firing together.
 	var frame := Engine.get_process_frames()
 	if frame == _last_input_frame:
 		return
@@ -220,7 +199,7 @@ func _input(event: InputEvent) -> void:
 		_start_glitch()
 	elif _glitching or _transitioning:
 		pass
-	elif _can_advance and _step >= 1:  # FIX: guard with _can_advance so tap during glitch entry is ignored
+	elif _can_advance and _step >= 1:
 		_advance()
 
 func _advance() -> void:
@@ -230,16 +209,13 @@ func _advance() -> void:
 	_can_advance = false  # Lock while transition plays; re-enabled at tween end
 	if advancing_step == 1:
 		_purple_label.position = Vector2.ZERO
-		_crossfade(_purple_label, _princess_label)
+		_crossfade(_purple_label, _soul_label)
 	elif advancing_step == 2:
-		_princess_label.position = Vector2.ZERO
-		_crossfade(_princess_label, _soul_label)
-	elif advancing_step == 3:
 		_crossfade(_soul_label, _plain_label)
-	elif advancing_step == 4:
+	elif advancing_step == 3:
 		AudioManager.stop_music(0.6)
 		_crossfade(_plain_label, _unlock_label)
-	elif advancing_step == 5:
+	elif advancing_step == 4:
 		Global.tutorial_seen = true
 		Global.save_state()
 		queue_free()

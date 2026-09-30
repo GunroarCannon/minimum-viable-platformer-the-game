@@ -110,7 +110,7 @@ const SCENES: Array = [
 	"id": "guide_buy_ui", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "Right. It took the game and left you the physics. Generous, technically."},
-		{"who": "narrator", "text": "You died, so you were paid. The firther you go the more you're paid."},
+		{"who": "narrator", "text": "You died, so you were paid. The further you go the more you get."},
 		# DROPPED — uncomment to restore narrator closer:
 		# {"who": "narrator", "text": "You can, actually. It kept the receipts. Start with the interface — you'll want menus before you want anything nice."},
 	],
@@ -119,14 +119,12 @@ const SCENES: Array = [
 	"id": "guide_menu", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "Congratulations. You now own a menu. Some people own houses."},
-		{"who": "narrator", "text": "Everything else lives in the Shop. Tokens in, world out. Go on."},
 	],
 },
 {
 	"id": "guide_shop_intro", "at": "guide", "mode": "scrim",
 	"blocks": [
 		{"who": "narrator", "text": "This is the tree. Every branch is something that improves the game."},
-		{"who": "sponsor",  "text": "MONETIZE YOUR SUFFERING! Tokens are earned exclusively through failure. No purchase necessary. No purchase possible."}
 	],
 },
 {
@@ -199,7 +197,7 @@ const SCENES: Array = [
 	"id": "death_21", "at": "death", "mode": "black",
 	"when": {"deaths_at": [21]},
 	"blocks": [
-		{"who": "narrator", "text": "Twenty-one. You are legally an adult in most of this level."},
+		{"who": "narrator", "text": "Twenty-one. You are legally an adult in this game."},
 		{"who": "princess", "text": "he's so proud of that one. he's been saving it since eleven"}
 	],
 },
@@ -259,13 +257,92 @@ const SCENES: Array = [
 	],
 },
 
+# ══ NEW DEATH MILESTONES ══════════════════════════════════════════════════
+
+
+
+{
+	"id": "death_18", "at": "death", "mode": "black",
+	"when": {"deaths_at": [18]},
+	"blocks": [
+		{"who": "princess", "text": "eighteen! vote for your favorite hazard!"},
+		{"who": "narrator", "text": "The voting booth was removed for budget reasons. The spikes won anyway."},
+	],
+},
+
+
+{
+	"id": "death_42", "at": "death", "mode": "black",
+	"when": {"deaths_at": [42]},
+	"blocks": [
+		{"who": "narrator", "text": "Deep Thought did not account for your reaction time."},
+	],
+},
+
+
+{
+	"id": "death_75", "at": "death", "mode": "black",
+	"when": {"deaths_at": [75]},
+	"blocks": [
+		 {"who": "princess", "text": "75!! three quarters of a hundred!!"},
+		 {"who": "narrator", "text": "Thank you for the arithmetic lesson, Pink One."},
+	],
+},
+
+{
+	"id": "death_120", "at": "death", "mode": "black",
+	"when": {"deaths_at": [120]},
+	"blocks": [
+		{"who": "princess",  "text": "120 RUNS! You have officially spent more time dead than airborne!"},
+	],
+},
+{
+	"id": "death_150", "at": "death", "mode": "black",
+	"when": {"deaths_at": [150]},
+	"blocks": [
+		 {"who": "purple",   "text": "150. Even I am starting to feel bad. Almost."},
+		 {"who": "narrator", "text": "Don't lie to the player, it breaks immersion."},
+	],
+},
+
+{
+	"id": "death_300", "at": "death", "mode": "black",
+	"when": {"deaths_at": [300]},
+	"blocks": [
+		{"who": "princess", "text": "THIS IS SPARTA! ...wait, no, this is death three hundred!"},
+		{"who": "narrator", "text": "Please refrain from referencing outdated memes in my narrative log."},
+	],
+},
+{
+	"id": "death_404", "at": "death", "mode": "black",
+	"when": {"deaths_at": [404]},
+	"blocks": [
+		{"who": "system",   "text": "error 404: winning_strategy not found"},
+	],
+},
+{
+	"id": "death_500", "at": "death", "mode": "black",
+	"when": {"deaths_at": [500]},
+	"blocks": [
+		{"who": "narrator", "text": "Five hundred deaths. You have died more times than the dev team did during testing."},
+		{"who": "purple",   "text": "And we tested it terribly."},
+	],
+},
+{
+	"id": "death_1000", "at": "death", "mode": "black",
+	"when": {"deaths_at": [1000]},
+	"blocks": [
+		{"who": "narrator", "text": "One thousand deaths. I have no more commentary. You win by sheer stubbornness."},
+		{"who": "princess", "text": "1,000!! HAPPY ONE THOUSANDTH DEATH!! I MADE VIRTUAL CONFETTI!!"},\
+	],
+},
+
 # ══ KEY-SKILL PURCHASES ═══════════════════════════════════════════════════
 {
 	"id": "buy_procgen", "at": "shop_open", "mode": "black",
 	"when": {"purchased": "procgen"},
 	"blocks": [
-		{"who": "purple",   "text": "You put the ground back. I removed that personally."},
-		{"who": "narrator", "text": "It removed it by unplugging one node. It talks about it like heavy labour."},
+		{"who": "narrator", "text": "Good, the shop was feeling lonely."},
 	],
 },
 {
@@ -273,7 +350,6 @@ const SCENES: Array = [
 	"when": {"purchased": "enemies_basic"},
 	"blocks": [
 		{"who": "purple",   "text": "You bought my staff back. With my money."},
-		{"who": "narrator", "text": "Technically your money. Earned by dying. It is a closed loop and everyone in it is tired."},
 		# DROPPED — uncomment to restore soul interjection:
 		# {"who": "soul",     "text": "the loop isn't closed. i got out. this is out"},
 	],
@@ -293,21 +369,27 @@ const SCENES: Array = [
 	"when": {"purchased": "leaderboard"},
 	"blocks": [
 		{"who": "narrator", "text": "You bought the leaderboard. Now strangers can see exactly how you're doing."},
-		# DROPPED — uncomment to restore princess excitement:
-		# {"who": "princess", "text": "other people?? other people exist?? put me on it. put my name on it"},
-		{"who": "purple",   "text": "Rebuild it all if you like. I only ever needed the part that keeps score."},
+		 {"who": "princess", "text": "other people?? other people exist?? put me on it. put my name on it"},
 	],
 },
 
 # ══ IDLE / RETURN / HOARDING ══════════════════════════════════════════════
 {
+	# Fires once, on the very next run, only for a player who backed all the
+	# way out of the app (not just to a menu — there wasn't one yet) via
+	# ui_back/ui_cancel. See pause_menu.gd and Global.early_quit_before_unlock.
+	"id": "early_quit_scold", "at": "run_start", "mode": "scrim", "once": true,
+	"priority": 5,
+	"when": {"early_quit_pending": true},
+	"blocks": [
+		{"who": "narrator", "text": "You were so quick to leave. You never even unlocked anything yet. How cruel."},
+	],
+},
+{
 	"id": "return_gap", "at": "run_start", "mode": "black", "once": false,
 	"when": {"days_away_at_least": 2.0},
 	"blocks": [
 		{"who": "narrator", "text": "Oh. You're back. No, it's fine. I kept everything exactly where you left it, because I can't move."},
-		{"who": "princess", "text": "I MISSED YOU. he did too. he arranged the tiles"},
-		# DROPPED — uncomment to restore narrator denial:
-		# {"who": "narrator", "text": "I did not arrange the tiles."},
 	],
 },
 {
@@ -326,8 +408,7 @@ const SCENES: Array = [
 	"when": {"unspent_tokens_at_least": 10, "requires_unlocked": "ui",
 		"no_guide_pending": true},
 	"blocks": [
-		{"who": "narrator", "text": "You are carrying ten tokens around a world that does not have a shop in it yet, because you haven't been to the shop."},
-		{"who": "princess", "text": "SPEND THEM! spend them on something SILLY! spend them on ME"},
+		{"who": "narrator", "text": "You are carrying ten tokens that can onl be used for the shop... because you haven't been to the shop."},
 	],
 },
 {
@@ -358,6 +439,23 @@ const SCENES: Array = [
 		{"who": "narrator", "text": "Squash and stretch, a sprite that isn't a rectangle, and a menu that isn't an apology."},
 		{"who": "sponsor",  "text": "POLISH IS NOT COSMETIC! Polish is how the player knows the thing happened! That one is FREE ADVICE and I regret it!"},
 		{"who": "narrator", "text": "It's right, irritatingly. Buy them in the order I point."},
+	],
+},
+{
+	"id": "guide3_intro", "at": "guide", "mode": "scrim",
+	"blocks": [
+		{"who": "narrator", "text": "Three runs in a row and not one look at the shop. I have been keeping count. It is my whole job."},
+		{"who": "narrator", "text": "You can afford the nasty ones now. Bombs, drills, shooters — and art so you can see them coming."},
+		{"who": "purple",   "text": "More teeth."},
+		{"who": "narrator", "text": "More teeth, more tokens. Shop. I'll point."},
+	],
+},
+{
+	"id": "guide3_shop", "at": "guide", "mode": "scrim",
+	"blocks": [
+		{"who": "narrator", "text": "Harder enemies pay better. That is the entire economy, really."},
+		{"who": "sponsor",  "text": "RISK IS JUST REWARD THAT HASN'T HAPPENED YET! Consult no one!"},
+		{"who": "narrator", "text": "Buy them in the order I point."},
 	],
 },
 
@@ -402,6 +500,10 @@ func is_seen(id: String) -> bool:
 func mark_seen(scene: Dictionary) -> void:
 	var id := String(scene.get("id", ""))
 	if id == "": return
+	if id == "early_quit_scold":
+		# One-shot flag, separate from story_seen — clear it now that the
+		# line it exists for has actually played.
+		Global.early_quit_before_unlock = false
 	if bool(scene.get("once", true)):
 		Global.story_seen[id] = true
 		Global.save_state()
@@ -427,7 +529,7 @@ func _guide_pending() -> bool:
 	var ob = get_node_or_null("/root/Onboarding")
 	if ob == null: return false
 	if ob.has_method("is_done") and not ob.is_done(): return true
-	if ob.has_method("phase2_ready") and ob.phase2_ready(): return true
+	if ob.has_method("any_late_ready") and ob.any_late_ready(): return true
 	return false
 
 func _matches(when: Dictionary) -> bool:
@@ -456,6 +558,8 @@ func _matches(when: Dictionary) -> bool:
 				if Global.tokens < int(want): return false
 			"no_guide_pending":
 				if bool(want) and _guide_pending(): return false
+			"early_quit_pending":
+				if bool(want) and not Global.early_quit_before_unlock: return false
 			_:
 				push_warning("[StoryDB] unknown condition key '%s'" % key)
 				return false

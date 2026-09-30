@@ -25,6 +25,7 @@
 16. [How to Add More Menus](#16-how-to-add-more-menus)
 17. [How to Add Custom Particle Effects](#17-how-to-add-custom-particle-effects)
 18. [Debug Toggles Reference](#18-debug-toggles-reference)
+19. [License](#19-license)
 
 ---
 
@@ -1112,6 +1113,12 @@ Access: `Global.debug_toggles.get("key", false)`. Toggle at runtime via the debu
 1. Add to `debug_toggles` dict in `global.gd`.
 2. Check anywhere: `if Global.debug_toggles.get("my_flag", false):`
 3. The debug overlay checkbox list auto-updates — no extra registration needed.
+
+---
+
+## 19. License
+
+This project is open source and available under the [MIT License](LICENSE).
 
 ---
 

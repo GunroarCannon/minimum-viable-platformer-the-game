@@ -71,6 +71,12 @@ var tutorial_seen: bool = false
 ## StoryDB scene ids already played, so a once-only cut never repeats.
 var story_seen: Dictionary = {}
 
+## True when the player backed out of gameplay via the OS-quit shortcut
+## before the menu was even unlocked (pause_menu.gd's very-early-state
+## branch). Read by StoryDB's "early_quit_pending" condition to greet them
+## with one narrator line on their next run, then cleared.
+var early_quit_before_unlock: bool = false
+
 ## Position in the forced first-run guide. See onboarding.gd for the values.
 var onboard_step: String = ""
 
@@ -79,6 +85,11 @@ var onboard_step: String = ""
 ## Onboarding.arm_phase2() and cleared once the whole chain is owned, so the
 ## guide survives the level → menu → shop scene changes it has to cross.
 var onboard2_armed: bool = false
+
+## Deaths since the player last opened the shop, and whether that streak has
+## armed the enemy guide (Onboarding phase 3). Reset / cleared like phase 2.
+var runs_since_shop: int = 0
+var onboard3_armed: bool = false
 
 ## Unix time this save was last written, and how many real days passed between
 ## the previous session and this one. StoryDB's days_away_at_least reads the gap.
@@ -92,22 +103,24 @@ var _circle_tex: GradientTexture2D = null
 
 func get_circle_texture() -> Texture2D:
 	if not _circle_tex:
+		# Solid centre → transparent edge, with a ~1 px anti-aliased rim. Set
+		# the arrays wholesale: Gradient refuses to drop to zero points, so the
+		# old remove_point() dance logged an error and left a stray stop behind.
 		var grad = Gradient.new()
-		# Remove the two default points Godot inserts (white@0, black@1),
-		# then define a clean solid-centre → transparent-edge radial profile.
-		grad.remove_point(1)
-		grad.remove_point(0)
-		grad.add_point(0.0,  Color(1, 1, 1, 1))
-		grad.add_point(0.48, Color(1, 1, 1, 1))
-		grad.add_point(0.5,  Color(1, 1, 1, 0))
-		grad.add_point(1.0,  Color(1, 1, 1, 0))
+		grad.offsets = PackedFloat32Array([0.0, 0.46, 0.5, 1.0])
+		grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 1),
+			Color(1, 1, 1, 0), Color(1, 1, 1, 0)])
 		_circle_tex = GradientTexture2D.new()
 		_circle_tex.gradient = grad
 		_circle_tex.fill = GradientTexture2D.FILL_RADIAL
 		_circle_tex.fill_from = Vector2(0.5, 0.5)
 		_circle_tex.fill_to = Vector2(1, 0.5)
-		_circle_tex.width = 16
-		_circle_tex.height = 16
+		# 64 px so particles are drawn at or below native size. The old 16 px
+		# dot was scaled up 3–6× and came out as a soft blur. Every
+		# scale_amount_* in the game is tuned against this size: diameter in
+		# pixels = 64 × scale.
+		_circle_tex.width = 64
+		_circle_tex.height = 64
 	return _circle_tex
 
 ## Score for the current run — accumulates tokens*mult + stomp bonuses.
@@ -324,8 +337,11 @@ func save_state() -> void:
 		"sky_color": sky_color,
 		"stats": stats,
 		"story_seen": story_seen,
+		"early_quit_before_unlock": early_quit_before_unlock,
 		"onboard_step": onboard_step,
 		"onboard2_armed": onboard2_armed,
+		"onboard3_armed": onboard3_armed,
+		"runs_since_shop": runs_since_shop,
 		"last_played_unix": int(Time.get_unix_time_from_system()),
 	}
 	f.store_var(blob)
@@ -357,8 +373,11 @@ func load_state() -> void:
 		for k in stored_stats.keys():
 			stats[k] = stored_stats[k]
 	story_seen = blob.get("story_seen", {})
+	early_quit_before_unlock = bool(blob.get("early_quit_before_unlock", false))
 	onboard_step = String(blob.get("onboard_step", ""))
 	onboard2_armed = bool(blob.get("onboard2_armed", false))
+	onboard3_armed = bool(blob.get("onboard3_armed", false))
+	runs_since_shop = int(blob.get("runs_since_shop", 0))
 	# Gap since the previous session, measured before we stamp "now".
 	var now := int(Time.get_unix_time_from_system())
 	var prev := int(blob.get("last_played_unix", 0))
@@ -535,12 +554,17 @@ func reset_progress() -> void:
 	first_death_done = false
 	tutorial_seen = false
 	story_seen = {}
+	early_quit_before_unlock = false
 	onboard_step = ""
 	onboard2_armed = false
+	onboard3_armed = false
+	runs_since_shop = 0
 	best_distance = 0
 	level_library = []
 	color_palette = "default"
 	sky_color = "default"
+	# The font pick belongs to the Font Select upgrade being reset above.
+	settings_cfg["font_choice"] = "default"
 	save_state()
 
 ## Enable or disable a purchased feature without losing it.

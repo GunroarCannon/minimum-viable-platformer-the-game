@@ -4,16 +4,25 @@ extends CanvasLayer
 @onready var subtitle_label: Label = $Root/TitleBox/Subtitle
 @onready var tokens_label: Label = $Root/TopBar/TokensLabel
 @onready var best_label: Label = $Root/TopBar/BestLabel
-@onready var play_btn: Button = $Root/Buttons/PlayButton
-@onready var shop_btn: Button = $Root/Buttons/ShopButton
-@onready var settings_btn: Button = $Root/Buttons/SettingsButton
-@onready var exit_btn: Button = $Root/Buttons/ExitButton
+@onready var play_btn: Button = $Root/ButtonsScroll/ButtonsCenter/ButtonsPad/Buttons/PlayButton
+@onready var shop_btn: Button = $Root/ButtonsScroll/ButtonsCenter/ButtonsPad/Buttons/ShopButton
+@onready var settings_btn: Button = $Root/ButtonsScroll/ButtonsCenter/ButtonsPad/Buttons/SettingsButton
+@onready var exit_btn: Button = $Root/ButtonsScroll/ButtonsCenter/ButtonsPad/Buttons/ExitButton
 
 var _library_btn: Button = null
 var _stats_btn: Button = null
 var _daily_btn: Button = null
 var _leaderboard_btn: Button = null
+var _store_btn: Button = null
 var _bg_offset: float = 0.0
+## Referenced by path, not the global "ConfirmPopup" class name — that name
+## is only registered once the editor rescans the project for class_name
+## declarations, which a freshly-added script may not have gone through yet.
+const ConfirmPopupScript := preload("res://confirm_popup.gd")
+
+## Open "really quit?" confirmation, if one is currently up. Guards back-input
+## and the exit buttons from acting twice while it's on screen.
+var _quit_popup: CanvasLayer = null
 
 
 func _ready() -> void:
@@ -23,7 +32,7 @@ func _ready() -> void:
 	settings_btn.pressed.connect(_on_settings)
 	exit_btn.pressed.connect(_on_exit)
 
-	var buttons = $Root/Buttons
+	var buttons = $Root/ButtonsScroll/ButtonsCenter/ButtonsPad/Buttons
 
 	# Daily level — inserted at the very top when unlocked.
 	if Global.is_unlocked("daily_level"):
@@ -74,7 +83,9 @@ func _ready() -> void:
 	_promote_to_topbar()
 
 	# If 5 or more buttons remain in the VBox, shrink them so they all fit.
-	var visible_btns := buttons.get_child_count()
+	# (Settings/Exit are hidden — not counted — since _promote_to_topbar moved
+	# them to the top bar already.)
+	var visible_btns := _visible_button_count(buttons)
 	if visible_btns >= 5:
 		for b in buttons.get_children():
 			if b is Button and b.visible:
@@ -84,6 +95,9 @@ func _ready() -> void:
 
 	_refresh_labels()
 	UITheme.apply_current(self)
+	# Built after the theme pass: it carries its own store styling and must not
+	# turn grey on the placeholder theme.
+	_build_store_button()
 
 	if Global.is_unlocked("main_menu_extras"):
 		_play_title_intro_tween()
@@ -182,6 +196,67 @@ func _promote_to_topbar() -> void:
 	settings_btn.visible = false
 	exit_btn.visible = false
 
+## "Get Tokens" — the in-app store entry, pinned bottom-left. Out of the way of
+## the main button stack but always the same place, in the store's own pumpkin
+## colours so it reads as a different kind of button from Play / Shop.
+func _build_store_button() -> void:
+	# Web / desktop release builds can never sell anything — no dead button there.
+	if not (IAP.available or OS.is_debug_build()): return
+	var btn := Button.new()
+	btn.text = "Get Tokens"
+	btn.custom_minimum_size = Vector2(0, 64)
+	btn.add_theme_font_size_override("font_size", 24)
+	btn.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	btn.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	btn.offset_left = 24
+	btn.offset_bottom = -24
+	btn.offset_top = -88
+	var ink := Color(0.18, 0.14, 0.10)
+	for state in ["normal", "hover", "pressed", "focus"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = {"normal": Color(1.00, 0.74, 0.32), "hover": Color(1.00, 0.80, 0.42),
+			"pressed": Color(0.95, 0.55, 0.20), "focus": Color(1.00, 0.74, 0.32)}[state]
+		sb.border_color = ink
+		sb.set_border_width_all(3)
+		sb.set_corner_radius_all(32)
+		sb.shadow_color = Color(0, 0, 0, 0.28)
+		sb.shadow_size = 2 if state == "pressed" else 6
+		sb.shadow_offset = Vector2(0, 3)
+		sb.content_margin_left = 64   # room for the star badge
+		sb.content_margin_right = 26
+		btn.add_theme_stylebox_override(state, sb)
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		btn.add_theme_color_override(c, ink)
+	var star := preload("res://stat_icon.gd").new()
+	star.kind = 0  # STAR
+	star.color = ink
+	star.accent = Color(1.00, 0.95, 0.70)
+	star.position = Vector2(14, 10)
+	star.size = Vector2(44, 44)
+	btn.add_child(star)
+	btn.pressed.connect(func(): StoreView.open(self))
+	$Root.add_child(btn)
+	_store_btn = btn
+	AudioManager.connect_ui_clicks(btn)
+	_idle_nudge_store_button()
+
+
+## A small hop every few seconds so the store is noticed without shouting.
+## Skipped while a guide owns the screen.
+func _idle_nudge_store_button() -> void:
+	var tw := create_tween().set_loops()
+	tw.tween_interval(5.0)
+	tw.tween_callback(func():
+		if _store_btn == null or Onboarding.suppresses_juice(): return
+		_store_btn.pivot_offset = _store_btn.size * 0.5
+		var hop := create_tween()
+		hop.tween_property(_store_btn, "scale", Vector2(1.08, 1.08), 0.12).set_trans(Tween.TRANS_BACK)
+		hop.tween_property(_store_btn, "rotation", -0.05, 0.08)
+		hop.tween_property(_store_btn, "rotation", 0.05, 0.08)
+		hop.tween_property(_store_btn, "rotation", 0.0, 0.08)
+		hop.parallel().tween_property(_store_btn, "scale", Vector2.ONE, 0.16))
+
+
 func _apply_home_polish() -> void:
 	title_label.add_theme_font_size_override("font_size", 68)
 	title_label.add_theme_color_override("font_color", Color(1.00, 0.76, 0.35))
@@ -197,19 +272,31 @@ func _apply_home_polish() -> void:
 
 	# Beefier buttons — bigger, more space, but only if we have room.
 	# With 5+ buttons we already compacted them in _ready; don't re-expand.
-	var btn_count := $Root/Buttons.get_child_count()
+	var btn_container := $Root/ButtonsScroll/ButtonsCenter/ButtonsPad/Buttons
+	var btn_count := _visible_button_count(btn_container)
 	if btn_count < 5:
-		for b in $Root/Buttons.get_children():
-			if b is Button:
+		for b in btn_container.get_children():
+			if b is Button and b.visible:
 				b.custom_minimum_size = Vector2(420, 72)
 				b.add_theme_font_size_override("font_size", 30)
-		$Root/Buttons.add_theme_constant_override("separation", 18)
+		btn_container.add_theme_constant_override("separation", 18)
 	else:
-		for b in $Root/Buttons.get_children():
+		for b in btn_container.get_children():
 			if b is Button and b.visible:
 				b.custom_minimum_size = Vector2(390, 56)
 				b.add_theme_font_size_override("font_size", 24)
-		$Root/Buttons.add_theme_constant_override("separation", 8)
+		btn_container.add_theme_constant_override("separation", 8)
+
+
+## Counts only the Button children actually taking up space in the VBox —
+## Settings/Exit stay real children after _promote_to_topbar hides them, so a
+## raw get_child_count() overcounts and throws off the fit-shrinking above.
+func _visible_button_count(container: VBoxContainer) -> int:
+	var n := 0
+	for b in container.get_children():
+		if b is Button and b.visible:
+			n += 1
+	return n
 
 
 func _play_title_intro_tween() -> void:
@@ -272,8 +359,13 @@ func _daily_seed() -> int:
 
 
 func _on_exit() -> void:
-	get_tree().quit()
+	if _quit_popup: return
+	_quit_popup = ConfirmPopupScript.ask_to_quit(self, "You'll close the game completely.")
+	_quit_popup.tree_exited.connect(func(): _quit_popup = null)
 
 func _input(event: InputEvent) -> void:
+	if _quit_popup: return
 	if event.is_action_pressed("ui_back") or event.is_action_pressed("ui_cancel"):
-		get_tree().quit()
+		var vp := get_viewport()
+		if vp: vp.set_input_as_handled()
+		_on_exit()

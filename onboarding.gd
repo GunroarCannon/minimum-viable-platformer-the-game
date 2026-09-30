@@ -37,6 +37,23 @@ const CHAIN2 := ["juice_squash", "player_sprite", "main_menu_extras"]
 ## Tokens on hand at death before the second guide will arm.
 const PHASE2_TOKEN_GATE := 25
 
+## ─── PHASE 3 ────────────────────────────────────────────────────────────
+## The enemy guide. A player who keeps running the same easy level instead of
+## visiting the shop, while already able to afford the harder (better-paying)
+## enemies and their sprite art, gets walked there. Same shape as phase 2:
+## armed by a death, progress is "what's still unbought", disarms when done.
+const CHAIN3 := ["enemies_advanced", "enemy_sprites"]
+## Deaths in a row without opening the shop before phase 3 will arm.
+const PHASE3_RUNS_WITHOUT_SHOP := 3
+
+## Per late guide: its chain, the saved armed flag in Global, and its two cuts.
+const LATE_GUIDES := {
+	"p3": {"chain": CHAIN3, "flag": "onboard3_armed",
+		"cut_intro": "guide3_intro", "cut_shop": "guide3_shop"},
+	"p2": {"chain": CHAIN2, "flag": "onboard2_armed",
+		"cut_intro": "guide2_intro", "cut_shop": "guide2_shop"},
+}
+
 const StoryCut := preload("res://story_cut.gd")
 const GuideFinger := preload("res://guide_finger.gd")
 
@@ -45,8 +62,10 @@ var _cut_busy: bool = false
 var _running: bool = false
 var _pending_sid: String = ""
 var _shop_host: Node = null
-## True while the currently-attached guide is the phase-2 polish pass.
+## True while the currently-attached guide is a late guide (phase 2 or 3).
 var _phase2: bool = false
+## Which late guide is attached: a key of LATE_GUIDES, or "".
+var _late: String = ""
 
 func step() -> String:
 	var s := String(Global.onboard_step)
@@ -61,12 +80,12 @@ func is_done() -> bool:
 
 ## ─── PHASE 2 STATE ──────────────────────────────────────────────────────
 
-## The dependency closure of CHAIN2, in an order where every entry's prereqs come
-## before it. Anything already owned drops out, so an empty result means the
-## whole polish set is bought and phase 2 has nothing left to say.
-func phase2_targets() -> Array:
+## The dependency closure of a late guide's chain, in an order where every
+## entry's prereqs come before it. Anything already owned drops out, so an empty
+## result means the whole chain is bought and that guide has nothing left to say.
+func late_targets(g: String) -> Array:
 	var out: Array = []
-	for sid in CHAIN2:
+	for sid in LATE_GUIDES[g]["chain"]:
 		_collect_unbought(sid, out)
 	return out
 
@@ -78,25 +97,43 @@ func _collect_unbought(sid: String, out: Array) -> void:
 		_collect_unbought(String(req), out)
 	out.append(sid)
 
-## The next node phase 2 should point at, or "" when it's finished.
-func phase2_next() -> String:
-	var t := phase2_targets()
+## The next node a late guide should point at, or "" when it's finished.
+func late_next(g: String) -> String:
+	var t := late_targets(g)
 	return String(t[0]) if not t.is_empty() else ""
 
-func phase2_armed() -> bool:
-	return Global.onboard2_armed and not phase2_targets().is_empty()
+func late_armed(g: String) -> bool:
+	return bool(Global.get(LATE_GUIDES[g]["flag"])) and not late_targets(g).is_empty()
 
-## Whether the next polish target can actually be bought right now. Phase 2 points
-## at Shop from two screens that can't see the tree, and the finger gates every
-## other button — so if the shop has nothing buyable, pointing there would trap the
-## player in a menu → shop → menu loop with no way to start a run. In that case the
-## guide stays armed but silent, and picks up again once they can afford it.
-func phase2_ready() -> bool:
-	if not phase2_armed(): return false
-	var sid := phase2_next()
+## Whether a late guide's next target can actually be bought right now. The late
+## guides point at Shop from two screens that can't see the tree, and the finger
+## gates every other button — so if the shop has nothing buyable, pointing there
+## would trap the player in a menu → shop → menu loop with no way to start a run.
+## In that case the guide stays armed but silent, and picks up again once they
+## can afford it.
+func late_ready(g: String) -> bool:
+	if not late_armed(g): return false
+	var sid := late_next(g)
 	if sid == "": return false
-	return SkillsDB.SKILLS.has(sid) and not SkillsDB.is_purchased(sid) \
-		and SkillsDB.prereqs_met(sid) and SkillsDB.can_afford(sid)
+	return SkillsDB.SKILLS.has(sid) and not SkillsDB.is_purchased(sid) 		and SkillsDB.prereqs_met(sid) and SkillsDB.can_afford(sid)
+
+## The late guide that should run on this screen, or "". Phase 3 goes first:
+## it only arms after the player has been dodging the shop, so it is the more
+## pressing of the two.
+func active_late_guide() -> String:
+	for g in LATE_GUIDES:
+		if late_ready(g): return g
+	return ""
+
+## True when either late guide has something it can point at right now.
+func any_late_ready() -> bool:
+	return active_late_guide() != ""
+
+## Kept for callers that only know about the polish guide.
+func phase2_targets() -> Array: return late_targets("p2")
+func phase2_next() -> String: return late_next("p2")
+func phase2_armed() -> bool: return late_armed("p2")
+func phase2_ready() -> bool: return late_ready("p2")
 
 ## Called from the death path once the player is rich enough. Returns true if the
 ## guide actually armed — if every polish upgrade is already owned it arms
@@ -110,10 +147,29 @@ func arm_phase2() -> bool:
 	Global.save_state()
 	return true
 
-func _disarm_phase2_if_complete() -> void:
-	if Global.onboard2_armed and phase2_targets().is_empty():
-		Global.onboard2_armed = false
-		Global.save_state()
+## Called from the death path. Arms the enemy guide when the player has died
+## PHASE3_RUNS_WITHOUT_SHOP times without opening the shop and can afford every
+## enemy upgrade still missing from CHAIN3 (prereqs included).
+func arm_phase3() -> bool:
+	if not is_done(): return false
+	if Global.onboard3_armed: return true
+	if Global.runs_since_shop < PHASE3_RUNS_WITHOUT_SHOP: return false
+	var targets := late_targets("p3")
+	if targets.is_empty(): return false
+	var total := 0
+	for sid in targets:
+		total += SkillsDB.compute_cost(sid)
+	if Global.tokens < total: return false
+	Global.onboard3_armed = true
+	Global.save_state()
+	return true
+
+func _disarm_late_if_complete() -> void:
+	for g in LATE_GUIDES:
+		var flag: String = LATE_GUIDES[g]["flag"]
+		if bool(Global.get(flag)) and late_targets(g).is_empty():
+			Global.set(flag, false)
+			Global.save_state()
 
 ## ─── JUICE SUPPRESSION ──────────────────────────────────────────────────
 
@@ -126,7 +182,7 @@ func _disarm_phase2_if_complete() -> void:
 ##     about to arrive. (Armed-but-broke doesn't count — no finger comes, so the
 ##     usual juice should play.)
 func suppresses_juice() -> bool:
-	return (not is_done()) or is_active() or phase2_ready()
+	return (not is_done()) or is_active() or any_late_ready()
 
 ## True while a cut or the finger owns the screen — StoryDB checks this so
 ## ambient story scenes never talk over the guide.
@@ -151,8 +207,8 @@ func notify_purchase(sid: String) -> void:
 	_pending_sid = ""
 	_clear_finger()
 	if _phase2:
-		_disarm_phase2_if_complete()
-		if phase2_armed() and _shop_host != null and is_instance_valid(_shop_host):
+		_disarm_late_if_complete()
+		if any_late_ready() and _shop_host != null and is_instance_valid(_shop_host):
 			await get_tree().create_timer(0.9).timeout
 			if is_instance_valid(_shop_host):
 				attach(_shop_host, "shop")
@@ -170,10 +226,11 @@ func attach(host: Node, context: String) -> void:
 	_clear_finger()
 	if host == null: return
 	if is_done():
-		# Phase 1 finished. The polish guide takes over only once a death has
-		# armed it and something in its chain is still unbought.
-		_disarm_phase2_if_complete()
-		if not phase2_armed(): return
+		# Phase 1 finished. A late guide (enemies, then polish) takes over only
+		# once a death has armed it and it has something buyable to point at.
+		_disarm_late_if_complete()
+		_late = active_late_guide()
+		if _late == "": return
 		_phase2 = true
 		_running = true
 		match context:
@@ -199,8 +256,8 @@ func attach(host: Node, context: String) -> void:
 ## instead of at Retry.
 
 func _run2_game_over(host: Node) -> void:
-	if not phase2_ready(): return
-	await _play_cut("guide2_intro")
+	if not late_ready(_late): return
+	await _play_cut(LATE_GUIDES[_late]["cut_intro"])
 	if not is_instance_valid(host): return
 	var btn: Button = host.get("btn_shop")
 	if not _button_ok(btn):
@@ -210,7 +267,7 @@ func _run2_game_over(host: Node) -> void:
 	_ensure_finger().point_at_control(btn)
 
 func _run2_menu(host: Node) -> void:
-	if not phase2_ready(): return
+	if not late_ready(_late): return
 	if not is_instance_valid(host): return
 	var btn: Button = host.get("shop_btn")
 	if not _button_ok(btn):
@@ -220,9 +277,9 @@ func _run2_menu(host: Node) -> void:
 
 func _run2_shop(host: Node) -> void:
 	_shop_host = host
-	var sid := phase2_next()
+	var sid := late_next(_late)
 	if sid == "":
-		_disarm_phase2_if_complete()
+		_disarm_late_if_complete()
 		return
 
 	var tv: Control = host.get("tree_view")
@@ -231,7 +288,7 @@ func _run2_shop(host: Node) -> void:
 		# armed and re-points next time they walk in with more tokens.
 		return
 
-	await _play_cut("guide2_shop")
+	await _play_cut(LATE_GUIDES[_late]["cut_shop"])
 	if not is_instance_valid(host) or not is_instance_valid(tv): return
 
 	tv.focus_on(sid)

@@ -9,6 +9,10 @@ const FONT_KA1 := preload("res://assets/fonts/ka1.ttf")
 
 var _shown: bool = false
 var _last_tokens: int = 0
+var _last_dist: int = -1
+var _last_best: int = -1
+var _last_gained: int = -1
+var _last_mult: int = -1
 var _mult_label: Label = null
 var _best_flag: Label = null   # rotated side indicator
 var _best_flag_state: String = ""    # last committed state ("", "ALMOST!", "NEW BEST!")
@@ -22,6 +26,7 @@ func _ready() -> void:
 	if not _shown: return
 	UITheme.apply_current(self)
 	_last_tokens = Global.tokens
+	tokens_label.text = "★ %d" % _last_tokens
 	root.modulate.a = 0.0
 	var tw = create_tween()
 	tw.tween_property(root, "modulate:a", 1.0, 0.35).set_delay(0.10)
@@ -75,31 +80,33 @@ func _build_best_flag() -> void:
 
 func _process(_delta: float) -> void:
 	if not _shown: return
-	dist_label.text = "▶ %d m" % Global.last_run_distance
-	tokens_label.text = "★ %d" % Global.tokens
-	best_label.text = "best %d m" % Global.best_distance
+	# Rebuild each string only when its number changes — formatting four
+	# strings every frame is steady garbage on a phone for text that mostly
+	# sits still.
+	if Global.last_run_distance != _last_dist:
+		_last_dist = Global.last_run_distance
+		dist_label.text = "▶ %d m" % _last_dist
+	if Global.best_distance != _last_best:
+		_last_best = Global.best_distance
+		best_label.text = "best %d m" % _last_best
 	if Global.tokens != _last_tokens:
 		_last_tokens = Global.tokens
+		tokens_label.text = "★ %d" % _last_tokens
 		var tw = create_tween()
 		tw.tween_property(tokens_label, "scale", Vector2(1.4, 1.4), 0.10).set_trans(Tween.TRANS_BACK)
 		tw.tween_property(tokens_label, "scale", Vector2.ONE, 0.20)
 	# Live run token gain counter.
-	if _run_tokens_label:
-		var gained: int = Global.run_tokens_gained
-		if gained > 0:
-			_run_tokens_label.text = "+%d ★" % gained
-		else:
-			_run_tokens_label.text = ""
+	if _run_tokens_label and Global.run_tokens_gained != _last_gained:
+		_last_gained = Global.run_tokens_gained
+		_run_tokens_label.text = ("+%d ★" % _last_gained) if _last_gained > 0 else ""
 
 	# Combo multiplier chip.
 	if _mult_label:
-		var m: int = ComboSystem.current_multiplier() if has_node("/root/ComboSystem") else 0
-		if m >= 1:
-			_mult_label.text = "x%d" % m
-			_mult_label.visible = true
-		else:
-			_mult_label.text = ""
-			_mult_label.visible = false
+		var m: int = ComboSystem.current_multiplier()
+		if m != _last_mult:
+			_last_mult = m
+			_mult_label.text = ("x%d" % m) if m >= 1 else ""
+			_mult_label.visible = m >= 1
 
 	_update_best_flag()
 

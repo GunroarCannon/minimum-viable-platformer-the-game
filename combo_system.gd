@@ -194,9 +194,10 @@ func _process(delta: float) -> void:
 		_end_combo()
 		return
 	# End combo if player has been stationary on x for too long (e.g. stuck against wall).
-	var players := get_tree().get_nodes_in_group("player")
-	if not players.is_empty():
-		var px: float = (players[0] as Node2D).global_position.x
+	# Global.player is set by the player itself — no per-frame group scan.
+	var pl = Global.player
+	if pl != null and is_instance_valid(pl):
+		var px: float = (pl as Node2D).global_position.x
 		if _last_player_x == INF:
 			_last_player_x = px
 		elif abs(px - _last_player_x) > X_MOVE_EPS:

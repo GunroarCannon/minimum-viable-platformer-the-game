@@ -79,6 +79,8 @@ signal restore_finished(ok: bool)
 signal ad_reward_granted(placement: String)
 ## No ad was available, or the player dismissed it early. Nothing was earned.
 signal ad_unavailable(placement: String)
+## Localized store prices arrived (or changed). Read them with price_for().
+signal prices_updated()
 
 ## ─── STATE ──────────────────────────────────────────────────────────────
 
@@ -98,6 +100,8 @@ var _pending_product: String = ""
 var _restore_pending: bool = false
 ## AdMob adapter instance, created on first use. Null when the plugin is absent.
 var _admob_node: Node = null
+## product id -> localized price string ("$0.99"), filled by fetch_prices().
+var _prices: Dictionary = {}
 
 
 func _ready() -> void:
@@ -126,6 +130,8 @@ func _ready() -> void:
 	_rc.restore_finished.connect(_on_restore_finished)
 	_rc.entitlement.connect(_on_entitlement)
 	_rc.paywall_result.connect(_on_paywall_result)
+	if _rc.has_signal("products"):
+		_rc.products.connect(_on_products)
 
 	# Tie purchases to the leaderboard identity so they survive a reinstall.
 	# Without this every install is a fresh anonymous RevenueCat user and a
@@ -134,6 +140,7 @@ func _ready() -> void:
 	available = true
 	print("[IAP] Initialised (debug=%s)." % OS.is_debug_build())
 	_refresh_entitlements()
+	fetch_prices()
 
 
 func _api_key() -> String:
@@ -181,6 +188,40 @@ func _set_entitlement(id: String, active: bool) -> void:
 	Global.iap_entitlements = _entitlements.duplicate()
 	Global.save_state()
 	entitlements_changed.emit()
+
+
+## ─── PRICES ─────────────────────────────────────────────────────────────
+
+## Ask the store for localized prices of every product the in-game store sells.
+## Safe to call repeatedly; results land on prices_updated.
+func fetch_prices() -> void:
+	if not available or not _rc.has_method("fetch_products"): return
+	_rc.fetch_products([PRODUCT_TOKENS_SMALL, PRODUCT_TOKENS_LARGE,
+		PRODUCT_PUBLISHER_DEAL, PRODUCT_DEV_SUPPORT])
+
+
+## Localized price, or "" when the store hasn't reported one (yet).
+func price_for(product_id: String) -> String:
+	return String(_prices.get(product_id, ""))
+
+
+func _on_products(data) -> void:
+	if _error_of(data) != "" or typeof(data) != TYPE_DICTIONARY: return
+	var raw = data.get("products", null)
+	var items: Array = []
+	# iOS hands back a native Array, Android a java.util.List.
+	if raw is Array:
+		items = raw
+	elif raw is JavaObject:
+		for i in int(raw.call("size")):
+			items.append(raw.call("get", i))
+	for prod in items:
+		if typeof(prod) != TYPE_DICTIONARY: continue
+		# Play subscriptions report "id:base-plan"; the store only knows the id.
+		var pid := String(prod.get("id", "")).get_slice(":", 0)
+		if pid != "":
+			_prices[pid] = String(prod.get("price", ""))
+	prices_updated.emit()
 
 
 ## ─── PURCHASE FLOW ──────────────────────────────────────────────────────

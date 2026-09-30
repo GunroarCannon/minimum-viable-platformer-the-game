@@ -9,6 +9,29 @@ var timer: float = 0.0
 
 var anim: AnimatedSprite2D = null
 
+## Built once and shared by every frog — see bomb.gd's _boom_frames for why
+## per-instance load() of animation frames was a hitch on phones.
+static var _frog_frames: SpriteFrames = null
+
+static func _get_frog_frames() -> SpriteFrames:
+	if _frog_frames != null: return _frog_frames
+	var frames := SpriteFrames.new()
+	frames.add_animation("idle")
+	var idle_tex = load("res://assets/animations/frog_idle/0.png")
+	if idle_tex:
+		frames.add_frame("idle", idle_tex)
+	frames.add_animation("jump")
+	for f in range(4):
+		var jump_tex = load("res://assets/animations/frog_jump/" + str(f) + ".png")
+		if jump_tex:
+			frames.add_frame("jump", jump_tex)
+	frames.set_animation_speed("idle", 10.0)
+	frames.set_animation_speed("jump", 10.0)
+	frames.set_animation_loop("idle", true)
+	frames.set_animation_loop("jump", false)
+	_frog_frames = frames
+	return frames
+
 func _ready() -> void:
 	super._ready()
 	tear_size  = Vector2(64, 64)
@@ -23,27 +46,7 @@ func _ready() -> void:
 
 	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
-		var frames = SpriteFrames.new()
-		
-		# idle
-		frames.add_animation("idle")
-		var idle_tex = load("res://assets/animations/frog_idle/0.png")
-		if idle_tex:
-			frames.add_frame("idle", idle_tex)
-			
-		# jump
-		frames.add_animation("jump")
-		for f in range(4):
-			var jump_tex = load("res://assets/animations/frog_jump/" + str(f) + ".png")
-			if jump_tex:
-				frames.add_frame("jump", jump_tex)
-				
-		frames.set_animation_speed("idle", 10.0)
-		frames.set_animation_speed("jump", 10.0)
-		frames.set_animation_loop("idle", true)
-		frames.set_animation_loop("jump", false)
-		
-		anim.sprite_frames = frames
+		anim.sprite_frames = _get_frog_frames()
 		# 64 / 160 = 0.4 scale to match collision height while keeping aspect ratio
 		anim.scale = Vector2(0.4, 0.4)
 		add_child(anim)

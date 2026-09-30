@@ -401,19 +401,13 @@ func _style_buttons(target_w: float, has_ui: bool) -> void:
 		# Row containers unused in this mode.
 		_btn_row_primary.visible = false
 		_btn_row_secondary.visible = false
-		_style_single_button(btn_buy_ui,  StatIconScene.Kind.STAR,  target_w * 0.9, 64)
-		_style_single_button(btn_retry,   StatIconScene.Kind.REDO,  target_w * 0.9, 60)
-		_style_single_button(btn_exit,    StatIconScene.Kind.DOOR,  target_w * 0.9, 60)
-		btn_exit.text = "  Exit"
-		var pre_exit_sb := StyleBoxFlat.new()
-		pre_exit_sb.bg_color = Color(0.75, 0.18, 0.12, 0.90)
-		pre_exit_sb.border_color = Color(0.95, 0.30, 0.22, 0.80)
-		pre_exit_sb.set_border_width_all(2)
-		pre_exit_sb.set_corner_radius_all(10)
-		pre_exit_sb.content_margin_left = 12; pre_exit_sb.content_margin_right = 12
-		pre_exit_sb.content_margin_top = 8; pre_exit_sb.content_margin_bottom = 8
-		btn_exit.add_theme_stylebox_override("normal", pre_exit_sb)
-		btn_exit.add_theme_color_override("font_color", Color(1, 0.92, 0.88))
+		# Bare-bones on purpose: this screen exists before the player owns any
+		# "ui" polish, so it shouldn't borrow any — no icons, no color-coding,
+		# no tilt (see _juice_primary_button). Plain text in a white-outlined box.
+		btn_exit.text = "Exit"
+		_style_bare_outline_button(btn_buy_ui, target_w * 0.9, 64)
+		_style_bare_outline_button(btn_retry,  target_w * 0.9, 60)
+		_style_bare_outline_button(btn_exit,   target_w * 0.9, 60)
 		return
 
 	# Post-UI: build the button rows.
@@ -514,10 +508,34 @@ func _reset_button_icons() -> void:
 				old.queue_free()
 			b.remove_meta("ui_icon_node")
 
-func _style_single_button(btn: Button, kind: int, min_w: float, h: int) -> void:
+## Pre-UI styling: a plain white-outlined box with plain text — no icon, no
+## color-coding. Used for every button on the pre-UI game-over screen (see
+## _style_buttons).
+func _style_bare_outline_button(btn: Button, min_w: float, h: int) -> void:
 	btn.custom_minimum_size = Vector2(min_w, h)
 	btn.add_theme_font_size_override("font_size", 24)
-	_attach_button_icon(btn, kind, 28, 20)
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(1, 1, 1, 0.06)
+	normal.border_color = Color(1, 1, 1, 0.9)
+	normal.set_border_width_all(2)
+	normal.set_corner_radius_all(8)
+	normal.content_margin_left = 12; normal.content_margin_right = 12
+	normal.content_margin_top = 8; normal.content_margin_bottom = 8
+	var hover := normal.duplicate() as StyleBoxFlat
+	hover.bg_color = Color(1, 1, 1, 0.16)
+	var pressed := normal.duplicate() as StyleBoxFlat
+	pressed.bg_color = Color(1, 1, 1, 0.28)
+	var disabled := normal.duplicate() as StyleBoxFlat
+	disabled.bg_color = Color(1, 1, 1, 0.03)
+	disabled.border_color = Color(1, 1, 1, 0.4)
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", hover)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("focus", normal)
+	btn.add_theme_stylebox_override("disabled", disabled)
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		btn.add_theme_color_override(c, Color(1, 1, 1))
+	btn.add_theme_color_override("font_disabled_color", Color(1, 1, 1, 0.5))
 
 func _style_row_button(btn: Button, kind: int, min_w: int, h: int, fs: int, label_text: String) -> void:
 	btn.custom_minimum_size = Vector2(min_w, h)
@@ -630,10 +648,13 @@ func _play_in_tween() -> void:
 	tw.parallel().tween_property(box, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	call_deferred("_juice_primary_button")
 
-## The primary action ("Replay" if library is unlocked, else "Retry" / "Run again",
-## or "Buy UI" in pre-UI mode) gets a little grow + jiggle so the eye lands on it,
-## and settles at a small tilt for character.
+## The primary action ("Replay" if library is unlocked, else "Retry" / "Run again")
+## gets a little grow + jiggle so the eye lands on it, and settles at a small tilt
+## for character. Post-UI only — pre-UI stays static (see the early return below).
 func _juice_primary_button() -> void:
+	# Pre-UI is bare on purpose — no tilt/wiggle, just a static text box.
+	if not Global.is_unlocked("ui"):
+		return
 	# ...unless a guide owns the player's attention. Before the first guide is
 	# finished the next action is whatever the finger is about to point at, and
 	# while a finger is up nothing else on screen should be waving for a tap.

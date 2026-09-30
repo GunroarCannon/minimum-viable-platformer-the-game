@@ -37,6 +37,11 @@ const DROP_SPREAD_X    := 70.0
 ## Tween duration (seconds) for the arc flight.
 const DROP_TWEEN_SECS  := 0.30
 
+## Preloaded, not load()-ed per death — every enemy in a kill chain used to hit
+## disk/the resource cache for this on its way out (see bomb.gd's _boom_frames
+## for the same class of hitch with explosion frames).
+const COIN_SCENE := preload("res://coin.tscn")
+
 func _ready() -> void:
 	collision_layer = 2  # Enemies on Layer 2
 	# Mask 3 = Layer 1 (floor) + Layer 2 (other enemies) — enemies collide with each other
@@ -142,8 +147,8 @@ func die(torn: bool = false, impact_vel = Vector2.ZERO, instant_shatter: bool = 
 	if torn and tears_on_death:
 		# Shatter into irregular physics polygons
 		TearEffect.apply(self, tear_size, tear_color, impact_vel, tear_hard_points, tear_type)
-	else:
-		# Classic poof
+	elif Global.is_unlocked("particles") or Global.is_unlocked("party_death"):
+		# Classic poof (Party Mode is its own unlock, so it also earns the burst)
 		var poof = CPUParticles2D.new()
 		poof.texture = Global.get_circle_texture()
 		poof.emitting = true
@@ -154,8 +159,8 @@ func die(torn: bool = false, impact_vel = Vector2.ZERO, instant_shatter: bool = 
 		poof.spread = 180.0
 		poof.initial_velocity_min = 80.0
 		poof.initial_velocity_max = 280.0
-		poof.scale_amount_min = 1.3
-		poof.scale_amount_max = 3.2
+		poof.scale_amount_min = 0.12   # 8–26 px
+		poof.scale_amount_max = 0.4
 		poof.color = Color(0.9, 0.9, 0.9)
 		# Party Mode unlock: death bursts into multicoloured confetti.
 		if Global.is_unlocked("party_death"):
@@ -169,6 +174,7 @@ func die(torn: bool = false, impact_vel = Vector2.ZERO, instant_shatter: bool = 
 			poof.color = Color.WHITE
 		get_parent().add_child(poof)
 		poof.global_position = global_position
+		poof.finished.connect(poof.queue_free)
 
 	if Global.is_unlocked("enemy_drops") and not is_bullet:
 		_spawn_coin_drops()
@@ -200,11 +206,9 @@ func _spawn_coin_drops(guaranteed: bool = false) -> void:
 
 	var parent := get_parent()
 	if parent == null: return
-	var coin_res := load("res://coin.tscn")
-	if coin_res == null: return
 
 	for k in total:
-		var c = coin_res.instantiate()
+		var c = COIN_SCENE.instantiate()
 		parent.add_child(c)
 		c.global_position = global_position
 		c.flying = true

@@ -29,16 +29,22 @@ func _ready() -> void:
 	hills_near.visible = Global.is_unlocked("parallax")
 	clouds.visible = Global.is_unlocked("clouds")
 
+var _last_cam_x: float = INF
+
 func _process(_delta: float) -> void:
 	# Track player camera so layers can parallax with x.
 	if not is_instance_valid(_cam):
 		_cam = _find_cam()
 	if _cam:
 		var x = _cam.global_position.x
-		hills_far.set_meta("scroll_x", x * 0.10)
-		hills_near.set_meta("scroll_x", x * 0.35)
-		hills_far.queue_redraw()
-		hills_near.queue_redraw()
+		# Hills only move with the camera — skip the polygon rebuild on frames
+		# where it hasn't moved (death card, pauses, standing still).
+		if hills_far.visible and x != _last_cam_x:
+			_last_cam_x = x
+			hills_far.set_meta("scroll_x", x * 0.10)
+			hills_near.set_meta("scroll_x", x * 0.35)
+			hills_far.queue_redraw()
+			hills_near.queue_redraw()
 		if clouds.visible:
 			clouds.set_meta("scroll_x", x * 0.05 + Time.get_ticks_msec() * 0.02)
 			clouds.queue_redraw()

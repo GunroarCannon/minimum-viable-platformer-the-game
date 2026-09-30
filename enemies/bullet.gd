@@ -6,6 +6,23 @@ var direction: int = -1
 
 var anim: AnimatedSprite2D = null
 
+## Built once and shared by every bullet — see bomb.gd's _boom_frames for why
+## per-instance load() of animation frames was a hitch on phones.
+static var _fly_frames: SpriteFrames = null
+
+static func _get_fly_frames() -> SpriteFrames:
+	if _fly_frames != null: return _fly_frames
+	var frames := SpriteFrames.new()
+	frames.add_animation("fly")
+	for f in range(4):
+		var tex = load("res://assets/animations/bullet_bob/" + str(f) + ".png")
+		if tex:
+			frames.add_frame("fly", tex)
+	frames.set_animation_speed("fly", 10.0)
+	frames.set_animation_loop("fly", true)
+	_fly_frames = frames
+	return frames
+
 func _ready() -> void:
 	gravity_scale  = 0.0  # Bullets fly straight
 	can_be_stomped = true
@@ -25,18 +42,7 @@ func _ready() -> void:
 
 	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
-		var frames = SpriteFrames.new()
-		
-		frames.add_animation("fly")
-		for f in range(4):
-			var tex = load("res://assets/animations/bullet_bob/" + str(f) + ".png")
-			if tex:
-				frames.add_frame("fly", tex)
-				
-		frames.set_animation_speed("fly", 10.0)
-		frames.set_animation_loop("fly", true)
-		
-		anim.sprite_frames = frames
+		anim.sprite_frames = _get_fly_frames()
 		anim.scale = Vector2(0.4, 0.4)
 		add_child(anim)
 		anim.play("fly")

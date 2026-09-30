@@ -51,11 +51,14 @@ func _ready() -> void:
 	# once for coins that spawn already on camera.
 	_sync_visibility.call_deferred()
 
-## Swap the hand-drawn circle for the 8-frame spin once sprite art is unlocked.
-## Falls back to _draw() if the frames are missing so a bad asset can't make
-## coins invisible.
-func _setup_sprite() -> void:
-	if not Global.gfx("player_sprite"): return
+## Built once and shared by every coin — coins are the highest-frequency spawn
+## in the game (several per kill), so re-loading 8 frames from disk per
+## instance was the worst case of the per-spawn load() hitch (see bomb.gd's
+## _boom_frames for the same fix applied to explosions).
+static var _spin_frames: SpriteFrames = null
+
+static func _get_spin_frames() -> SpriteFrames:
+	if _spin_frames != null: return _spin_frames
 	var frames := SpriteFrames.new()
 	frames.add_animation("spin")
 	for f in range(8):
@@ -63,9 +66,20 @@ func _setup_sprite() -> void:
 		if tex:
 			frames.add_frame("spin", tex)
 	if frames.get_frame_count("spin") == 0:
-		return
+		return frames
 	frames.set_animation_speed("spin", 12.0)
 	frames.set_animation_loop("spin", true)
+	_spin_frames = frames
+	return frames
+
+## Swap the hand-drawn circle for the 8-frame spin once sprite art is unlocked.
+## Falls back to _draw() if the frames are missing so a bad asset can't make
+## coins invisible.
+func _setup_sprite() -> void:
+	if not Global.gfx("player_sprite"): return
+	var frames := _get_spin_frames()
+	if frames.get_frame_count("spin") == 0:
+		return
 	_anim = AnimatedSprite2D.new()
 	_anim.sprite_frames = frames
 	# Source frames are 82x84; the drawn coin reads as a ~48px disc, so match it.
@@ -145,8 +159,8 @@ func _collect() -> void:
 	p.gravity = Vector2(0, 380)
 	p.initial_velocity_min = 220.0
 	p.initial_velocity_max = 460.0
-	p.scale_amount_min = 0.8
-	p.scale_amount_max = 2.0
+	p.scale_amount_min = 0.1
+	p.scale_amount_max = 0.25
 	p.color = Color(0.98, 0.85, 0.30)
 	get_parent().add_child(p)
 	p.global_position = global_position
@@ -159,6 +173,9 @@ func _enemy_eat(enemy: Node) -> void:
 	if "coins_eaten" in enemy:
 		enemy.coins_eaten += token_value
 	# Brief dark-smoke dissolve — enemy absorbed the coin.
+	if not Global.is_unlocked("particles"):
+		queue_free()
+		return
 	var p := CPUParticles2D.new()
 	p.texture = Global.get_circle_texture()
 	p.emitting = true
@@ -170,8 +187,8 @@ func _enemy_eat(enemy: Node) -> void:
 	p.gravity = Vector2(0, -60)
 	p.initial_velocity_min = 60.0
 	p.initial_velocity_max = 180.0
-	p.scale_amount_min = 0.7
-	p.scale_amount_max = 1.6
+	p.scale_amount_min = 0.09
+	p.scale_amount_max = 0.22
 	p.color = Color(0.55, 0.45, 0.10, 0.8)
 	get_parent().add_child(p)
 	p.global_position = global_position

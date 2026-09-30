@@ -438,8 +438,8 @@ func _setup_footstep_dust() -> void:
 	_foot_dust.gravity = Vector2(0, 240)
 	_foot_dust.initial_velocity_min = 60.0
 	_foot_dust.initial_velocity_max = 160.0
-	_foot_dust.scale_amount_min = 0.7
-	_foot_dust.scale_amount_max = 1.8
+	_foot_dust.scale_amount_min = 0.1
+	_foot_dust.scale_amount_max = 0.25
 	_foot_dust.color = Color(0.85, 0.74, 0.55, 0.8)
 	_foot_dust.position = Vector2(0, 52)
 	add_child(_foot_dust)
@@ -571,8 +571,13 @@ func shake_camera(intensity: float, duration: float) -> void:
 	_shake_timer = duration
 
 func _process(delta: float) -> void:
-	_debug_canvas.queue_redraw()
-	queue_redraw()
+	# Only the primitive (pre-sprite) body and the collider debug boxes are
+	# drawn in _draw; once the sprite is bought, redrawing every frame just
+	# rebuilds an empty canvas item.
+	if Global.debug_toggles.get("show_collisions", false):
+		_debug_canvas.queue_redraw()
+	if not _use_sprite_player:
+		queue_redraw()
 	super._process(delta)
 	_refresh_group_caches(delta)
 	if is_dead:
@@ -870,11 +875,12 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 			poof.gravity = Vector2(0, 300)
 			poof.initial_velocity_min = 150.0
 			poof.initial_velocity_max = 400.0
-			poof.scale_amount_min = 1.0
-			poof.scale_amount_max = 2.6
+			poof.scale_amount_min = 0.12   # 8–24 px
+			poof.scale_amount_max = 0.38
 			poof.color = Color(0.4, 0.8, 1.0)
 			get_parent().add_child(poof)
 			poof.global_position = global_position
+			poof.finished.connect(poof.queue_free)
 	else:
 		# Capture inbound velocity BEFORE zeroing so the tear pieces launch with
 		# whatever momentum was in play (knockback from a bomb, forward run
@@ -947,6 +953,10 @@ func die(is_fall: bool = false, cause: String = "", instant_shatter: bool = fals
 			# is coming, the "go spend your tokens" reminder stands down instead of
 			# saying the same thing one screen earlier.
 			Onboarding.arm_phase2()
+			# Enemy guide: counts deaths since the last shop visit.
+			Global.runs_since_shop += 1
+			Global.save_state_deferred()
+			Onboarding.arm_phase3()
 			# Lore cut first (death-count / distance milestones), then the card.
 			var scene: Dictionary = StoryDB.pending("death")
 			if not scene.is_empty():

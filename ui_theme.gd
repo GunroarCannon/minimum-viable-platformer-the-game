@@ -115,24 +115,32 @@ static func apply(root: Node, theme_name: String) -> void:
 		_apply_polished(root)
 	else:
 		_apply_placeholder(root)
-	_apply_font_choice(root)
+	apply_font_choice(root)
 
 ## When the "font_select" upgrade is bought and a font is chosen in Settings,
 ## override the default font on all Buttons / Labels / CheckBoxes in the tree.
-static func _apply_font_choice(root: Node) -> void:
-	if not Global.is_unlocked("font_select"): return
-	var choice: String = String(Global.settings_cfg.get("font_choice", "default"))
-	if choice == "" or choice == "default": return
-	var path := "res://assets/fonts/%s" % choice
-	if not ResourceLoader.exists(path): return
-	var font: Font = load(path)
-	if font == null: return
+## Every font this sets is tagged, so when Font Select is not owned (or has been
+## toggled off) the tagged overrides are stripped again — without the tag we'd
+## also strip the deliberate display fonts other screens set themselves.
+static func apply_font_choice(root: Node) -> void:
+	var font: Font = null
+	if Global.is_unlocked("font_select"):
+		var choice: String = String(Global.settings_cfg.get("font_choice", "default"))
+		var path := "res://assets/fonts/%s" % choice
+		if choice != "" and choice != "default" and ResourceLoader.exists(path):
+			font = load(path)
 	_walk(root, func(node):
-		if node is Button or node is Label or node is CheckBox:
+		if not (node is Button or node is Label or node is OptionButton or node is LineEdit):
+			return
+		if font != null:
 			node.add_theme_font_override("font", font)
-		elif node is OptionButton or node is LineEdit:
-			node.add_theme_font_override("font", font)
+			node.set_meta(FONT_META, true)
+		elif node.has_meta(FONT_META):
+			node.remove_theme_font_override("font")
+			node.remove_meta(FONT_META)
 	)
+
+const FONT_META := "ui_theme_font"
 
 static func _apply_placeholder(root: Node) -> void:
 	_walk(root, func(node):

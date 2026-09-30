@@ -18,6 +18,27 @@ var _engine_player: AudioStreamPlayer = null
 ## fraction of the height below the top edge counts as standing on the head.
 const SAFE_TOP_FRACTION := 0.3
 
+## Built once and shared by every drill — see bomb.gd's _boom_frames for why
+## per-instance load() of animation frames was a hitch on phones. Also spares
+## every instance its own redundant load() of frame 0 just to read its size.
+static var _drill_frames: SpriteFrames = null
+
+static func _get_drill_frames() -> SpriteFrames:
+	if _drill_frames != null: return _drill_frames
+	var frames := SpriteFrames.new()
+	frames.add_animation("drill")
+	for f in range(6):
+		var tex = load("res://assets/animations/mole/" + str(f) + ".png")
+		if tex:
+			frames.add_frame("drill", tex)
+	frames.set_animation_speed("drill", 15.0)
+	frames.set_animation_loop("drill", true)
+	_drill_frames = frames
+	return frames
+
+## Preloaded once — was re-load()-ed from disk every time a drill started falling.
+const ENGINE_SOUND := preload("res://assets/sounds/Engine.wav")
+
 func _ready() -> void:
 	collision_layer = 0
 	collision_mask = 1 | 2 # Layer 1 (Tiles, Player), Layer 2 (Enemies)
@@ -46,18 +67,11 @@ func _ready() -> void:
 
 	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
-		var frames = SpriteFrames.new()
-		frames.add_animation("drill")
-		for f in range(6):
-			var tex = load("res://assets/animations/mole/" + str(f) + ".png")
-			if tex:
-				frames.add_frame("drill", tex)
-		frames.set_animation_speed("drill", 15.0)
-		frames.set_animation_loop("drill", true)
+		var frames := _get_drill_frames()
 		anim.sprite_frames = frames
-		
+
 		# Prioritize aspect ratio of the 480x620 asset to fit collision footprint (drill_size), scaled up by 1.6x for sprite size
-		var base_tex = load("res://assets/animations/mole/0.png")
+		var base_tex: Texture2D = frames.get_frame_texture("drill", 0) if frames.get_frame_count("drill") > 0 else null
 		if base_tex:
 			var tex_size = base_tex.get_size()
 			if tex_size.x > 0 and tex_size.y > 0:
@@ -105,10 +119,8 @@ func _process(delta: float) -> void:
 
 func _start_engine() -> void:
 	if not Global.is_unlocked("sfx"): return
-	var engine_stream = load("res://assets/sounds/Engine.wav")
-	if engine_stream == null: return
 	_engine_player = AudioStreamPlayer.new()
-	_engine_player.stream = engine_stream
+	_engine_player.stream = ENGINE_SOUND
 	_engine_player.volume_db = -6.0
 	_engine_player.pitch_scale = 1.0 + randf_range(-0.05, 0.05)
 	_engine_player.finished.connect(func():

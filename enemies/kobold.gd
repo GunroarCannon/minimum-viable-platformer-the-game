@@ -6,6 +6,23 @@ var direction: int = -1
 
 var anim: AnimatedSprite2D = null
 
+## Built once and shared by every kobold — see bomb.gd's _boom_frames for why
+## per-instance load() of animation frames was a hitch on phones.
+static var _walk_frames: SpriteFrames = null
+
+static func _get_walk_frames() -> SpriteFrames:
+	if _walk_frames != null: return _walk_frames
+	var frames := SpriteFrames.new()
+	frames.add_animation("walk")
+	for f in range(8):
+		var tex = load("res://assets/animations/kobold/" + str(f) + ".png")
+		if tex:
+			frames.add_frame("walk", tex)
+	frames.set_animation_speed("walk", 12.0)
+	frames.set_animation_loop("walk", true)
+	_walk_frames = frames
+	return frames
+
 func _ready() -> void:
 	super._ready()
 	tear_size  = Vector2(64, 96)
@@ -19,18 +36,7 @@ func _ready() -> void:
 
 	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
-		var frames = SpriteFrames.new()
-		
-		frames.add_animation("walk")
-		for f in range(8):
-			var tex = load("res://assets/animations/kobold/" + str(f) + ".png")
-			if tex:
-				frames.add_frame("walk", tex)
-				
-		frames.set_animation_speed("walk", 12.0)
-		frames.set_animation_loop("walk", true)
-		
-		anim.sprite_frames = frames
+		anim.sprite_frames = _get_walk_frames()
 		anim.scale = Vector2(0.436, 0.436)
 		add_child(anim)
 		anim.play("walk")

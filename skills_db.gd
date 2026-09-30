@@ -899,24 +899,20 @@ func _on_purchase_hook(skill_id: String) -> void:
 	if skill_id == "font_select":
 		var fonts := list_font_files()
 		if fonts.size() > 0:
-			fonts.erase("funkymuskrat.ttf")
+			fonts.erase("res://assets/fonts/funkymuskrat.ttf")
 			var pick: String = fonts[randi() % fonts.size()].get_file()
 			Global.settings_cfg["font_choice"] = pick
 			Global.save_state()
 
 ## Shared font-file enumeration used by both purchase-hook and Settings.
+## ResourceLoader.list_directory (not DirAccess) because in an exported build
+## the .ttf files are remapped and DirAccess only sees their .import stubs —
+## the Font Select upgrade would silently have nothing to pick from.
 static func list_font_files() -> Array:
 	var out: Array = []
-	var dir := DirAccess.open("res://assets/fonts")
-	if dir == null: return out
-	dir.list_dir_begin()
-	while true:
-		var f := dir.get_next()
-		if f == "": break
-		if f.begins_with("."): continue
+	for f in ResourceLoader.list_directory("res://assets/fonts"):
 		var lower := f.to_lower()
 		if lower.ends_with(".ttf") or lower.ends_with(".otf"):
 			out.append("res://assets/fonts/%s" % f)
-	dir.list_dir_end()
 	out.sort()
 	return out

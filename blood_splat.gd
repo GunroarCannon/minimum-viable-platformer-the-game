@@ -7,6 +7,26 @@ class_name BloodSplat
 ## Circular burst shape + optional velocity trail (toggleable in settings).
 ## Also stamps a persistent mark onto the BloodCanvas layer when "blood_marks" is unlocked.
 
+## Built once and shared by every splat — same fixed colors every call, so
+## there's no reason to allocate + rebuild these on every single enemy death.
+static var _burst_ramp: Gradient = null
+static var _trail_ramp: Gradient = null
+
+static func _get_burst_ramp() -> Gradient:
+	if _burst_ramp == null:
+		_burst_ramp = Gradient.new()
+		_burst_ramp.set_color(0, Color(0.85, 0.12, 0.12, 1.0))
+		_burst_ramp.add_point(0.55, Color(0.55, 0.06, 0.06, 1.0))
+		_burst_ramp.add_point(1.0,  Color(0.28, 0.04, 0.04, 0.0))
+	return _burst_ramp
+
+static func _get_trail_ramp() -> Gradient:
+	if _trail_ramp == null:
+		_trail_ramp = Gradient.new()
+		_trail_ramp.set_color(0, Color(0.75, 0.10, 0.10, 0.9))
+		_trail_ramp.add_point(1.0,  Color(0.30, 0.04, 0.04, 0.0))
+	return _trail_ramp
+
 static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) -> void:
 	if not Global.is_unlocked("blood_splats"): return
 	if parent == null or not parent.is_inside_tree(): return
@@ -43,17 +63,12 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 	p.gravity = Vector2(0, 900)
 	p.initial_velocity_min = 220.0
 	p.initial_velocity_max = 540.0
-	p.scale_amount_min = 0.4
-	p.scale_amount_max = 2.0
+	p.scale_amount_min = 0.06   # 4–14 px droplets
+	p.scale_amount_max = 0.22
 	p.damping_min = 10.0
 	p.damping_max = 26.0
 	p.color = Color(0.78, 0.10, 0.10)
-
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(0.85, 0.12, 0.12, 1.0))
-	ramp.add_point(0.55, Color(0.55, 0.06, 0.06, 1.0))
-	ramp.add_point(1.0,  Color(0.28, 0.04, 0.04, 0.0))
-	p.color_ramp = ramp
+	p.color_ramp = _get_burst_ramp()
 
 	parent.add_child(p)
 	p.global_position = pos
@@ -74,8 +89,8 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 	spurt.gravity = Vector2(0, 600)
 	spurt.initial_velocity_min = 500.0
 	spurt.initial_velocity_max = 840.0
-	spurt.scale_amount_min = 1.0
-	spurt.scale_amount_max = 2.0
+	spurt.scale_amount_min = 0.08
+	spurt.scale_amount_max = 0.16
 	spurt.color = Color(0.90, 0.15, 0.15)
 	parent.add_child(spurt)
 	spurt.global_position = pos
@@ -101,13 +116,10 @@ static func apply(parent: Node, pos: Vector2, velocity: Vector2 = Vector2.ZERO) 
 		trail.gravity = Vector2(0, 380)
 		trail.initial_velocity_min = 70.0
 		trail.initial_velocity_max = 220.0
-		trail.scale_amount_min = 0.4
-		trail.scale_amount_max = 3.0
+		trail.scale_amount_min = 0.05
+		trail.scale_amount_max = 0.19
 		trail.color = Color(0.72, 0.08, 0.08, 0.8)
-		var trail_ramp := Gradient.new()
-		trail_ramp.set_color(0, Color(0.75, 0.10, 0.10, 0.9))
-		trail_ramp.add_point(1.0,  Color(0.30, 0.04, 0.04, 0.0))
-		trail.color_ramp = trail_ramp
+		trail.color_ramp = _get_trail_ramp()
 		parent.add_child(trail)
 		trail.global_position = pos
 		trail.finished.connect(trail.queue_free)

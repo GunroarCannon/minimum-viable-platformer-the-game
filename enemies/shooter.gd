@@ -9,6 +9,24 @@ var timer: float = 0.0
 
 var anim: AnimatedSprite2D = null
 
+## Built once and shared by every cannon — see bomb.gd's _boom_frames for why
+## per-instance load() of animation frames was a hitch on phones (16 frames
+## per spawn made this the worst offender of the bunch).
+static var _shoot_frames: SpriteFrames = null
+
+static func _get_shoot_frames() -> SpriteFrames:
+	if _shoot_frames != null: return _shoot_frames
+	var frames := SpriteFrames.new()
+	frames.add_animation("shoot")
+	for f in range(16):
+		var tex = load("res://assets/animations/cannon/" + str(f) + ".png")
+		if tex:
+			frames.add_frame("shoot", tex)
+	frames.set_animation_speed("shoot", 10.0)
+	frames.set_animation_loop("shoot", true)
+	_shoot_frames = frames
+	return frames
+
 func _ready() -> void:
 	collision_layer = 1 # Solid wall
 	collision_mask = 0
@@ -16,18 +34,7 @@ func _ready() -> void:
 
 	if Global.gfx("enemy_sprites"):
 		anim = AnimatedSprite2D.new()
-		var frames = SpriteFrames.new()
-		
-		frames.add_animation("shoot")
-		for f in range(16):
-			var tex = load("res://assets/animations/cannon/" + str(f) + ".png")
-			if tex:
-				frames.add_frame("shoot", tex)
-				
-		frames.set_animation_speed("shoot", 10.0)
-		frames.set_animation_loop("shoot", true)
-		
-		anim.sprite_frames = frames
+		anim.sprite_frames = _get_shoot_frames()
 		anim.scale = Vector2(0.582, 0.582)
 		add_child(anim)
 		anim.play("shoot")
